@@ -1,0 +1,6 @@
+{
+  "name": "mrozne-ostrze",
+  "compatibility_date": "2026-09-13",
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "game.therisktaker.pl", "custom_domain": true }]
+}

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mroźne Ostrze</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #1590d0; overflow: hidden; }
+    #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Press Start 2P', monospace; color: #fff; }
+    #stage canvas { image-rendering: pixelated; }
+    #game { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #counter, #fps, .popup, #overlay, .slot b { text-shadow: 1px 1px 0 #000; }
+
+    #counter { position: absolute; left: 8px; top: 8px; font-size: 8px; }
+    #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
+    #version { position: absolute; right: 8px; bottom: 8px; font-size: 8px; color: #fff8; }
+    .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
+
+    #hud { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); padding: 5px 5px 4px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
+    .bars { display: flex; align-items: center; height: 14px; margin-bottom: 5px; }
+    .bar { position: relative; flex: 1; height: 8px; background: #140a05; }
+    .bar.hp { flex: 1.3; height: 14px; z-index: 1; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
+    .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fill); box-shadow: inset 0 2px var(--light), inset 0 -2px var(--dark); }
+    #mana { --fill: #2a55d6; --light: #5c85ff; --dark: #1a3590; }
+    #hp { --fill: #d0200f; --light: #ff5a3c; --dark: #8a1208; }
+    #stamina { --fill: #f0c419; --light: #ffe36a; --dark: #b08a0c; }
+
+    #slots { display: flex; gap: 4px; }
+    .slot { position: relative; width: 34px; height: 34px; background: #1d0e06; box-shadow: inset 0 0 0 1px #4a2814, inset 2px 2px #120803; }
+    .slot.selected { background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a, inset 0 0 0 2px #7a4a22; }
+    .slot canvas { position: absolute; left: 1px; top: 1px; }
+    .slot.disabled canvas { opacity: 0.35; }
+    .slot b { position: absolute; right: 2px; bottom: 2px; font-size: 8px; font-weight: normal; }
+
+    #overlay { position: absolute; left: 0; right: 0; top: 20%; padding: 14px 0 10px; background: rgba(8, 14, 20, 0.7); text-align: center; }
+    #overlay h1 { margin: 0 0 14px; font-size: 20px; font-weight: normal; color: #ffe9a8; text-shadow: 2px 2px 0 #000; }
+    #overlay p { margin: 0 0 8px; font-size: 8px; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div id="counter"></div>
+    <div id="fps"></div>
+    <div id="version"></div>
+    <div id="popups"></div>
+    <div id="hud">
+      <div class="bars">
+        <div class="bar"><i id="mana"></i></div>
+        <div class="bar hp"><i id="hp"></i></div>
+        <div class="bar"><i id="stamina"></i></div>
+      </div>
+      <div id="slots"></div>
+    </div>
+    <div id="overlay"><p>Ładowanie...</p></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
