@@ -49,4 +49,6 @@ export const sfx = {
   potion: () => tone(400, 1000, 0.35, 'sine', 0.15),
   lunge: () => { tone(160, 90, 0.25, 'sawtooth', 0.12); noise(0.2, 0.2, 900) },
   shoot: () => { tone(700, 300, 0.12, 'triangle', 0.1); noise(0.08, 0.15, 3000) },
+  pickup: () => tone(600, 1200, 0.1, 'square', 0.05),
+  coin: () => tone(1400, 2000, 0.12, 'square', 0.05),
 }

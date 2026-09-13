@@ -35,10 +35,18 @@ function shoot(e, game) {
 // Every enemy runs the same loop: approach, wind up, attack, recover.
 // Heavy enemies can't be knocked back or interrupted while attacking.
 export const TYPES = {
-  ogre: { hp: 60, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, drop: true, blood: '#8f6446', strike: smash(20) },
-  boss: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, drop: true, blood: '#8f6446', strike: smash(30) },
+  ogre: { hp: 60, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, blood: '#8f6446', strike: smash(20) },
+  boss: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, blood: '#8f6446', strike: smash(30) },
   wolf: { hp: 30, speed: 105, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.4, attack: 0.45, recover: 0.5, knockback: 160, blood: '#9aa8b3', strike: lunge, during: bite },
   archer: { hp: 24, speed: 55, stride: 10, height: 34, engage: 340, reach: 230, keepAway: 110, windup: 0.8, attack: 0.1, recover: 0.9, knockback: 150, blood: '#5d8a3a', strike: shoot },
+}
+
+// Loot table: [item, chance, count]
+const LOOT = {
+  ogre: [['gold', 1, 10], ['potion', 0.6, 1]],
+  boss: [['gold', 1, 40]],
+  wolf: [['fur', 0.7, 1], ['fang', 0.6, 1], ['gold', 0.5, 2]],
+  archer: [['arrows', 0.8, 4], ['gold', 1, 3]],
 }
 
 export function createEnemy(type, x) {
@@ -69,10 +77,7 @@ export function hurtEnemy(e, damage, dir, game, slow = 0) {
   game.shake = 6
   game.burst(e.x, e.y - type.height / 2, type.blood, 30, 160)
   sfx.smash()
-  if (type.drop) {
-    game.player.potions++
-    game.popup(e.x, e.y - type.height - 34, '+1 mikstura', '#ff8a8a')
-  }
+  for (const [item, chance, count] of LOOT[e.type]) if (Math.random() < chance) game.drop(e.x, e.y - type.height / 2, item, count)
 }
 
 export function updateEnemy(e, dt, game) {

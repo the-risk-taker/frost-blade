@@ -28,6 +28,76 @@ const GOBLIN = {
   bow: ['#5a3418', '#8a5a2b'],
   boots: '#2a1a10', belt: '#1f140c', pupil: '#1a1208', eye: '#ffe34a', string: '#e8e0c8', shaft: '#c9a878', tip: '#b8c8d2', feather: '#d04040', tooth: '#f3ead0',
 }
+const IRON = ['#3c4247', '#6b7378', '#a3aaaf']
+// Body gear recolors the hero's clothes
+const GEAR = {
+  armor: { vest: IRON, shirt: ['#555c61', '#7d858a', '#b5bcc0'] },
+  robe: { vest: ['#1d3566', '#2f5aa8', '#5c8ae0'], shirt: ['#6fa8dc', '#a8d4f0', '#dff2ff'] },
+}
+const MERCHANT = { robe: ['#3b2a1a', '#5e4128', '#86603a'], pack: ['#4a2f1a', '#7a5230', '#a87a48'], beard: ['#a0a0a0', '#dcdcdc'], lamp: '#ffd86a' }
+
+// Loot and gear in a 16x16 cell with the origin at the bottom center
+const ITEM_ART = {
+  gold: ({ rect, disc }) => {
+    disc(-2, -5, 3, '#c98f1c')
+    disc(2, -8, 3, '#f0c419')
+    rect(1, -10, 2, 1, '#fff2a8')
+  },
+  arrows: ({ rect, line }) => {
+    for (const x of [-3, 0, 3]) {
+      line(x - 2, -2, x + 2, -11, GOBLIN.shaft)
+      rect(x + 1, -13, 3, 3, GOBLIN.tip)
+      rect(x - 3, -3, 2, 2, GOBLIN.feather)
+    }
+  },
+  potion: ({ rect, disc }) => {
+    rect(-1, -14, 3, 2, '#8a5a2b')
+    rect(-1, -12, 3, 3, '#b8d8e0')
+    disc(0, -5, 4, (x, y) => x < -1 && y < -1 ? '#ff9a90' : x > 1 ? '#9c1a20' : '#d42a30')
+  },
+  fur: ({ rect }) => {
+    rect(-6, -9, 12, 7, WOLF.fur[1])
+    rect(-6, -9, 12, 2, WOLF.fur[2])
+    rect(-4, -6, 8, 1, WOLF.fur[3])
+    rect(-7, -3, 2, 2, WOLF.fur[1])
+    rect(5, -3, 2, 2, WOLF.fur[1])
+  },
+  fang: ({ rect }) => {
+    rect(-3, -12, 5, 3, GOBLIN.tooth)
+    rect(-2, -9, 4, 3, GOBLIN.tooth)
+    rect(-1, -6, 3, 2, GOBLIN.tooth)
+    rect(0, -4, 2, 2, '#c9bc98')
+  },
+  helmet: ({ rect }) => {
+    rect(-5, -11, 10, 6, IRON[1])
+    rect(-4, -12, 8, 1, IRON[1])
+    rect(-4, -11, 8, 1, IRON[2])
+    rect(-5, -5, 3, 3, IRON[0])
+    rect(2, -5, 3, 3, IRON[0])
+    rect(-1, -5, 2, 3, IRON[1])
+  },
+  armor: ({ rect }) => {
+    const [dark, mid] = GEAR.armor.shirt
+    rect(-5, -12, 10, 11, mid)
+    for (let y = -10; y < -1; y += 3) rect(-5, y, 10, 1, dark)
+    rect(-7, -12, 3, 4, IRON[1])
+    rect(4, -12, 3, 4, IRON[1])
+    rect(-2, -12, 4, 2, INK)
+  },
+  robe: ({ rect }) => {
+    const [dark, mid] = GEAR.robe.vest
+    rect(-4, -13, 8, 9, mid)
+    rect(-6, -5, 12, 4, mid)
+    rect(-6, -2, 12, 1, dark)
+    rect(-1, -13, 2, 12, GEAR.robe.shirt[1])
+  },
+  cloak: ({ rect }) => {
+    rect(-5, -12, 10, 11, WOLF.fur[1])
+    rect(-6, -3, 12, 2, WOLF.fur[1])
+    rect(-5, -12, 2, 11, WOLF.fur[0])
+    rect(-5, -13, 10, 3, WOLF.fur[3])
+  },
+}
 
 const phases = n => Array.from({ length: n }, (_, i) => i / n)
 const ease = t => 1 - (1 - t) ** 2
@@ -54,12 +124,14 @@ function sheet(cellW, cellH, originX, originY, animations) {
   return { canvas, frames, cellW, cellH, originX, originY }
 }
 
-function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0 }) {
-  const c = HERO
+function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, gear }) {
+  const c = { ...HERO, ...GEAR[gear.body] }
   const moving = walk !== undefined
   const step = moving ? Math.round(Math.sin(walk) * 3) : 0
   const y = moving ? -Math.round(Math.abs(Math.cos(walk))) : bob
+  const tail = Math.round(Math.sin(wave * Math.PI * 2) * 1.5)
   const [backLift, frontLift] = air < 0 ? [1, 4] : air > 0 ? [3, 1] : [Math.max(0, -step - 1), Math.max(0, step - 1)]
+  if (gear.back) line(-4, -24 + y, -9, -6 + tail, WOLF.fur[1], 5)
   const leg = (x, lift, [dark, mid]) => {
     rect(x, -13, 3, 10 - lift, mid)
     rect(x, -13, 1, 10 - lift, dark)
@@ -77,6 +149,10 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0 }) {
   rect(1, -25 + y, 1, 11, c.vest[2])
   rect(-4, -16 + y, 9, 2, c.belt)
   rect(2, -16 + y, 2, 2, c.gold)
+  if (gear.body === 'robe') {
+    rect(-5, -14 + y, 11, 8, c.vest[1])
+    rect(-5, -14 + y, 2, 8, c.vest[0])
+  }
 
   rect(-2, -34 + y, 7, 8, c.skin[1])
   rect(-2, -27 + y, 7, 1, c.skin[0])
@@ -90,16 +166,34 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0 }) {
   rect(-4, -34 + y, 3, 6, c.hair[1])
   rect(-4, -29 + y, 2, 1, c.hair[0])
   rect(3, -34 + y, 2, 1, c.hair[1])
+  if (gear.head) {
+    rect(-4, -38 + y, 10, 5, IRON[1])
+    rect(-4, -38 + y, 10, 1, IRON[2])
+    rect(-4, -34 + y, 10, 1, IRON[0])
+    rect(4, -33 + y, 1, 3, IRON[1])
+  }
 
-  const tail = Math.round(Math.sin(wave * Math.PI * 2) * 1.5)
   line(-3, -25 + y, -9, -23 + y + tail, c.scarf[0], 2)
   rect(-3, -27 + y, 8, 3, c.scarf[1])
   rect(0, -27 + y, 4, 1, c.scarf[2])
 
+  const shoulder = -23 + y
+  if (draw !== undefined) {
+    // Bow held forward, the string and arrow pulled back by draw pixels
+    for (let i = -9; i <= 9; i++) rect(9 + Math.round(4 * (1 - (i / 9) ** 2)), shoulder + i, 2, 1, Math.abs(i) > 7 ? GOBLIN.bow[0] : GOBLIN.bow[1])
+    line(9, shoulder - 9, 9 - draw, shoulder, GOBLIN.string)
+    line(9 - draw, shoulder, 9, shoulder + 9, GOBLIN.string)
+    line(8 - draw, shoulder, 20 - draw, shoulder, GOBLIN.shaft)
+    rect(20 - draw, shoulder - 1, 3, 3, GOBLIN.tip)
+    line(1, shoulder, 12, shoulder, c.shirt[1], 3)
+    rect(12, shoulder - 1, 3, 3, c.skin[1])
+    line(0, shoulder + 1, 8 - draw, shoulder, c.skin[1], 2)
+    return
+  }
+
   let arm = 0.9
   let sword = -1 + (moving ? Math.sin(walk) * 0.1 : 0)
   if (swing !== undefined) arm = sword = -2.1 + 3.1 * ease(Math.min(1, swing / 0.55))
-  const shoulder = -23 + y
   const hand = ray(1, shoulder, arm)(7)
   const s = ray(...hand, sword)
   line(...s(4), ...s(21), c.blade[1], 2)
@@ -127,6 +221,32 @@ function roll({ disc }, t) {
   disc(0, -9, 8, (x, y) => Math.floor((Math.atan2(y, x) + spin) * 3 / Math.PI + 12) & 1 ? HERO.vest[1] : HERO.shirt[1])
   const [hx, hy] = ray(0, -9, spin - 1.2)(5)
   disc(Math.round(hx), Math.round(hy), 3, HERO.hair[1])
+}
+
+function merchant({ rect, line }, { bob }) {
+  const c = MERCHANT, y = bob
+  rect(-13, -31 + y, 9, 18, c.pack[1])
+  rect(-13, -31 + y, 9, 2, c.pack[2])
+  rect(-13, -23 + y, 9, 1, c.pack[0])
+  rect(-12, -36 + y, 7, 5, HERO.scarf[1])
+  rect(-4, -2, 4, 2, HERO.boots[1])
+  rect(2, -2, 4, 2, HERO.boots[1])
+  rect(-5, -28 + y, 11, 26 - y, c.robe[1])
+  rect(-5, -28 + y, 3, 26 - y, c.robe[0])
+  rect(4, -26 + y, 2, 24 - y, c.robe[2])
+  rect(-5, -16 + y, 11, 2, HERO.belt)
+  rect(1, -16 + y, 2, 2, HERO.gold)
+  rect(-4, -39 + y, 10, 12, c.robe[1])
+  rect(-4, -39 + y, 10, 2, c.robe[0])
+  rect(-4, -37 + y, 3, 9, c.robe[0])
+  rect(0, -36 + y, 6, 7, HERO.skin[1])
+  rect(3, -34 + y, 1, 2, HERO.eye)
+  rect(0, -31 + y, 6, 5, c.beard[1])
+  rect(0, -31 + y, 2, 5, c.beard[0])
+  line(10, -44 + y, 10, -1, HERO.hilt, 2)
+  rect(8, -26 + y, 4, 3, HERO.skin[1])
+  rect(11, -45 + y, 4, 1, HERO.hilt)
+  rect(13, -44 + y, 4, 5, c.lamp)
 }
 
 function ogre({ rect, line }, { walk, bob = 0, arm = 1.25, boss }) {
@@ -315,14 +435,24 @@ export function buildArrow() {
   })
 }
 
-export function buildHero() {
+export function buildHero(gear) {
+  const pose = extra => p => hero(p, { gear, ...extra })
   return sheet(64, 60, 31, 55, {
-    idle: phases(4).map(t => p => hero(p, { bob: t < 0.5 ? 0 : 1, wave: t })),
-    walk: phases(8).map(t => p => hero(p, { walk: t * Math.PI * 2, wave: t * 2 })),
-    jump: [-1, 1].map(air => p => hero(p, { air, wave: 0.25 })),
-    attack: phases(6).map(t => p => hero(p, { swing: t })),
+    idle: phases(4).map(t => pose({ bob: t < 0.5 ? 0 : 1, wave: t })),
+    walk: phases(8).map(t => pose({ walk: t * Math.PI * 2, wave: t * 2 })),
+    jump: [-1, 1].map(air => pose({ air, wave: 0.25 })),
+    attack: phases(6).map(t => pose({ swing: t })),
     roll: phases(6).map(t => p => roll(p, t)),
+    aim: [0, 3, 6].map(draw => pose({ draw })),
   })
+}
+
+export function buildMerchant() {
+  return sheet(40, 56, 18, 52, { idle: phases(4).map(t => p => merchant(p, { bob: t < 0.5 ? 0 : 1 })) })
+}
+
+export function buildItems() {
+  return sheet(16, 16, 8, 16, Object.fromEntries(Object.entries(ITEM_ART).map(([item, draw]) => [item, [draw]])))
 }
 
 export function buildOgre(boss) {
@@ -375,6 +505,14 @@ export function buildIcons() {
       line(12, 19, 26, 6, HERO.blade[2])
       line(7, 17, 15, 25, HERO.guard, 2)
       line(5, 27, 10, 22, HERO.hilt, 3)
+    }),
+    bow: icon(({ rect, line }) => {
+      for (let i = -11; i <= 11; i++) rect(10 + Math.round(8 * (1 - (i / 11) ** 2)), 16 + i, 3, 1, Math.abs(i) > 8 ? GOBLIN.bow[0] : GOBLIN.bow[1])
+      line(10, 5, 10, 27, GOBLIN.string)
+      line(5, 16, 24, 16, GOBLIN.shaft)
+      rect(24, 15, 3, 3, GOBLIN.tip)
+      rect(4, 15, 3, 1, GOBLIN.feather)
+      rect(4, 17, 3, 1, GOBLIN.feather)
     }),
     frost: icon(({ line, disc }) => {
       line(16, 4, 16, 28, '#bff0ff')

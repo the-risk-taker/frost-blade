@@ -1,9 +1,10 @@
 import * as THREE from 'three'
-import { H, LEVEL_W, view } from './const.js'
+import { GROUND, H, LEVEL_W, view } from './const.js'
 import { buildWorld } from './art.js'
-import { buildHero, buildOgre, buildWolf, buildGoblin, buildBolt, buildArrow, buildGlow } from './sprites.js'
-import { ATTACK_TIME, ROLL_TIME } from './player.js'
+import { buildHero, buildOgre, buildWolf, buildGoblin, buildMerchant, buildBolt, buildArrow, buildItems, buildGlow } from './sprites.js'
+import { ATTACK_TIME, ROLL_TIME, BOW_CHARGE, aimArrow, flyArrow } from './player.js'
 import { TYPES } from './enemies.js'
+import { MERCHANTS } from './game.js'
 
 // Canvas colors are used as-is, without sRGB conversions.
 THREE.ColorManagement.enabled = false
@@ -11,7 +12,7 @@ THREE.ColorManagement.enabled = false
 const PARALLAX = [['sky', 0, 0], ['clouds', 0.04, 4], ['far', 0.1, 0], ['near', 0.22, 0], ['cliffs', 0.4, 0], ['forest', 0.62, 0]]
 const MARGIN = 8
 const SKY_TOP = '#1590d0'
-const ORDER = { level: 10, snowBack: 15, enemy: 20, hero: 21, projectile: 22, glow: 23, particles: 24, bars: 25, snowFront: 26, vignette: 30 }
+const ORDER = { level: 10, snowBack: 15, npc: 18, enemy: 20, hero: 21, pickup: 22, projectile: 23, glow: 24, particles: 25, bars: 26, snowFront: 27, vignette: 30 }
 
 const SPRITE_VERTEX = `
   uniform vec4 frame;
@@ -78,6 +79,7 @@ const cycle = (list, phase) => list[Math.floor(phase / (Math.PI * 2) * list.leng
 function heroFrame(p, frames, time) {
   if (p.rollT >= 0) return pick(frames.roll, p.rollT / ROLL_TIME)
   if (p.attackT >= 0) return pick(frames.attack, p.attackT / ATTACK_TIME)
+  if (p.drawT >= 0) return pick(frames.aim, p.drawT / BOW_CHARGE)
   if (!p.onGround) return frames.jump[p.vy < 0 ? 0 : 1]
   if (Math.abs(p.vx) > 10) return cycle(frames.walk, p.walk)
   return frames.idle[Math.floor(time * 3) % frames.idle.length]
@@ -100,7 +102,7 @@ class Sprite {
     this.uniforms = {
       map: { value: sheet.texture },
       frame: { value: new THREE.Vector4() },
-      flash: { value: new THREE.Vector4() },
+      flash: { value: new THREE.Vector4(0, 0, 0, 0) },
       alpha: { value: 1 },
     }
     const geometry = new THREE.PlaneGeometry(cellW, cellH).translate(cellW / 2 - originX, originY - cellH / 2, 0)
@@ -150,6 +152,8 @@ class PixelBatch {
   }
 }
 
+const load = sheet => Object.assign(sheet, { texture: texture(sheet.canvas) })
+
 const hideFrom = (list, count) => list.slice(count).forEach(item => { (item.mesh ?? item).visible = false })
 
 export class Renderer {
@@ -170,16 +174,20 @@ export class Renderer {
     this.add(mesh(corner(LEVEL_W, H), basic({ map: texture(world.level) }), ORDER.level))
     this.vignette = this.add(mesh(corner(1, 1), basic({ map: texture(world.vignette) }), ORDER.vignette))
 
-    const load = sheet => Object.assign(sheet, { texture: texture(sheet.canvas) })
     this.sheets = {
       ogre: load(buildOgre(false)), boss: load(buildOgre(true)), wolf: load(buildWolf()), archer: load(buildGoblin()),
-      bolt: load(buildBolt()), arrow: load(buildArrow()),
+      bolt: load(buildBolt()), arrow: load(buildArrow()), items: load(buildItems()),
     }
-    this.hero = new Sprite(this.scene, load(buildHero()), ORDER.hero)
+    // One hero sheet per worn gear combination, baked when first needed
+    this.heroSheets = {}
+    const merchant = load(buildMerchant())
+    this.merchants = MERCHANTS.map(() => new Sprite(this.scene, merchant, ORDER.npc))
     this.glowMap = texture(buildGlow())
     this.enemies = []
     this.bolts = []
     this.arrows = []
+    this.shots = []
+    this.pickups = []
     this.glows = []
     this.particles = new PixelBatch(this.scene, 2000, ORDER.particles)
     this.snowBack = new PixelBatch(this.scene, 400, ORDER.snowBack)
@@ -223,13 +231,27 @@ export class Renderer {
     this.vignette.position.set(cam, view.h - H, 0)
 
     const blink = p.hurtT > 0 && Math.floor(game.time * 20) % 2
-    this.hero.show(p.x, p.y, p.dir, heroFrame(p, this.hero.sheet.frames, game.time))
+    const heroSheet = this.heroSheets[Object.values(p.gear).join()] ??= load(buildHero(p.gear))
+    this.hero ??= new Sprite(this.scene, heroSheet, ORDER.hero)
+    this.hero.sheet = heroSheet
+    this.hero.uniforms.map.value = heroSheet.texture
+    this.hero.show(p.x, p.y, p.dir, heroFrame(p, heroSheet.frames, game.time))
     this.hero.mesh.visible = game.state !== 'dead' && !blink
     this.hero.uniforms.flash.value.set(1, 1, 1, p.hurtT > 0.65 ? 0.8 : 0)
 
+    this.merchants.forEach((merchant, i) => merchant.show(MERCHANTS[i], GROUND, -1, merchant.sheet.frames.idle[Math.floor(game.time * 2) % 4]))
     game.enemies.forEach((e, i) => this.renderEnemy(e, i))
     this.renderProjectiles(game.bolts, this.bolts, this.sheets.bolt)
     this.renderProjectiles(game.arrows, this.arrows, this.sheets.arrow)
+    this.renderProjectiles(game.shots, this.shots, this.sheets.arrow)
+
+    const { items } = this.sheets
+    game.pickups.forEach((q, i) => {
+      this.pickups[i] ??= new Sprite(this.scene, items, ORDER.pickup)
+      const bob = q.y < GROUND ? 0 : Math.round(Math.sin(game.time * 5 + q.x) * 1.5) - 2
+      this.pickups[i].show(q.x, q.y + bob, 1, items.frames[q.item][0])
+    })
+    hideFrom(this.pickups, game.pickups.length)
 
     const glows = [
       ...game.bolts.map(b => ({ x: b.x, y: b.y, size: 30, color: '#4fc3f7', alpha: 0.9 })),
@@ -246,6 +268,16 @@ export class Renderer {
     hideFrom(this.glows, glows.length)
 
     for (const q of game.particles) this.particles.push(q.x, q.y, q.color, q.size)
+    if (p.drawT >= 0) {
+      // Dotted flight path of the arrow being aimed
+      const arrow = aimArrow(p)
+      for (let i = 1; i <= 45 && arrow.y < GROUND; i++) {
+        flyArrow(arrow, 0.02)
+        if (i % 4) continue
+        this.particles.push(arrow.x, arrow.y, '#2a1a10', 3)
+        this.particles.push(arrow.x, arrow.y, '#fff3c4', 1)
+      }
+    }
     this.particles.commit()
 
     for (const f of this.flakes) {
@@ -290,6 +322,7 @@ export class Renderer {
     list.forEach((item, i) => {
       pool[i] ??= new Sprite(this.scene, sheet, ORDER.projectile)
       pool[i].show(item.x, item.y, Math.sign(item.vx), sheet.frames.fly[0])
+      pool[i].mesh.rotation.z = -Math.sign(item.vx) * Math.atan2(item.vy ?? 0, Math.abs(item.vx))
     })
     hideFrom(pool, list.length)
   }

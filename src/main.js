@@ -4,6 +4,7 @@ import { Renderer } from './render.js'
 import { Hud } from './hud.js'
 import { input } from './input.js'
 import { unlockAudio } from './sound.js'
+import { translatePage } from './lang.js'
 
 const stage = document.getElementById('stage')
 let renderer
@@ -29,6 +30,7 @@ addEventListener('keydown', unlockAudio)
 addEventListener('mousedown', unlockAudio)
 addEventListener('touchend', unlockAudio)
 document.getElementById('fullscreen').hidden = !document.fullscreenEnabled
+translatePage()
 resize()
 
 // Let the loading message paint before the world is generated
@@ -36,7 +38,8 @@ await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done
 
 const game = new Game()
 renderer = new Renderer(document.getElementById('game'))
-const hud = new Hud()
+const hud = new Hud(game)
+stage.classList.remove('loading')
 
 let last = performance.now()
 let fps = 0

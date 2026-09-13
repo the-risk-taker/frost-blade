@@ -5,19 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Mroźne Ostrze</title>
+  <meta name="description" content="Mroźne Ostrze - pixelartowa gra akcji w zimowych górach. Walcz z wilkami, goblinami i ogrami. Działa w przeglądarce, także na telefonie." />
+  <meta name="theme-color" content="#1590d0" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://game.therisktaker.pl/" />
+  <meta property="og:title" content="Mroźne Ostrze" />
+  <meta property="og:description" content="Pixelartowa gra akcji w zimowych górach. Zagraj w przeglądarce." />
+  <meta property="og:image" content="https://game.therisktaker.pl/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans&display=swap" rel="stylesheet" />
   <style>
     html, body { margin: 0; height: 100%; background: #1590d0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-    #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Press Start 2P', monospace; color: #fff; }
+    #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Pixelify Sans', monospace; color: #fff; }
     #stage canvas { image-rendering: pixelated; }
     #game { position: absolute; inset: 0; width: 100%; height: 100%; }
     #counter, #fps, .popup, #overlay, .slot b, #touch { text-shadow: 1px 1px 0 #000; }
 
-    #counter { position: absolute; left: 8px; top: 8px; font-size: 8px; }
-    #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
-    #version { position: absolute; right: 8px; bottom: 8px; font-size: 8px; color: #fff8; }
-    .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
+    #counter { position: absolute; left: 8px; top: 8px; font-size: 10px; }
+    #fps { position: absolute; right: 8px; top: 8px; font-size: 10px; color: #b8f5a0; }
+    #version { position: absolute; right: 8px; bottom: 8px; font-size: 10px; color: #fff8; }
+    .popup { position: absolute; font-size: 10px; transform: translateX(-50%); white-space: nowrap; }
 
     #hud { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); padding: 5px 5px 4px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
     .bars { display: flex; align-items: center; height: 14px; margin-bottom: 5px; }
@@ -33,14 +46,30 @@
     .slot.selected { background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a, inset 0 0 0 2px #7a4a22; }
     .slot canvas { position: absolute; left: 1px; top: 1px; }
     .slot.disabled canvas { opacity: 0.35; }
-    .slot b { position: absolute; right: 2px; bottom: 2px; font-size: 8px; font-weight: normal; }
+    .slot b { position: absolute; right: 2px; bottom: 2px; font-size: 10px; font-weight: normal; }
 
-    #overlay { position: absolute; left: 0; right: 0; top: 20%; padding: 14px 0 10px; background: rgba(8, 14, 20, 0.7); text-align: center; }
-    #overlay h1 { margin: 0 0 14px; font-size: 20px; font-weight: normal; color: #ffe9a8; text-shadow: 2px 2px 0 #000; }
-    #overlay p { margin: 0 0 8px; font-size: 8px; }
+    #overlay { position: absolute; left: 0; right: 0; top: 20%; padding: 8px 0 6px; background: rgba(8, 14, 20, 0.7); text-align: center; }
+    #overlay h1 { margin: 0 0 6px; font-size: 40px; line-height: 1; font-weight: normal; color: #ffe9a8; text-shadow: 4px 4px 0 #000; }
+    #overlay p { margin: 0 0 4px; font-size: 10px; }
+    #overlay [data-language] { display: inline-block; margin-left: 4px; padding: 2px 6px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
+    #overlay [data-active] { color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8; }
+    #stage.loading > :not(#overlay) { visibility: hidden; }
+
+    #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 260px; padding: 10px; font-size: 10px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
+    #panel h2, #panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 20px; font-weight: normal; color: #ffe9a8; }
+    #panel h3 { margin: 8px 0 2px; font-size: 10px; }
+    #panel p { margin: 6px 0 0; color: #c9b08a; }
+    #panel .row { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 4px; cursor: pointer; }
+    #panel .row:hover { background: #3d2112; }
+    #panel .row span { flex: 1; }
+    #panel em { display: flex; align-items: center; gap: 2px; font-style: normal; }
+    #panel [data-off] { opacity: 0.4; }
+    #panel [data-worn] em { color: #b8f5a0; }
+    #panel .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
+    .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); image-rendering: pixelated; }
 
     #touch, #rotate { display: none; }
-    #touch div { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; font-size: 8px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
+    #touch div { position: absolute; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 10px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
     #touch div:active { background: #6b3d22; }
     #touch #fullscreen { right: 8px; top: 22px; width: auto; height: auto; padding: 5px; }
     #touch [hidden] { display: none; }
@@ -48,12 +77,12 @@
       #touch { display: block; }
     }
     @media (pointer: coarse) and (orientation: portrait) {
-      #rotate { position: fixed; inset: 0; display: grid; place-items: center; background: #1590d0; font: 12px 'Press Start 2P', monospace; color: #fff; }
+      #rotate { position: fixed; inset: 0; display: grid; place-items: center; background: #1590d0; font: 20px 'Pixelify Sans', monospace; color: #fff; }
     }
   </style>
 </head>
 <body>
-  <div id="stage" data-key="Enter">
+  <div id="stage" class="loading" data-key="Enter">
     <canvas id="game"></canvas>
     <div id="counter"></div>
     <div id="fps"></div>
@@ -67,17 +96,20 @@
       </div>
       <div id="slots"></div>
     </div>
-    <div id="overlay"><p>Ładowanie...</p></div>
+    <div id="overlay"><h1 data-text="title"></h1><p data-text="loading"></p></div>
+    <div id="panel" hidden></div>
     <div id="touch">
+      <div data-key="KeyI" style="left: 12px; bottom: 70px" data-text="btnBag"></div>
+      <div id="trade" data-key="KeyE" style="right: 62px; bottom: 70px" hidden data-text="btnShop"></div>
       <div data-key="ArrowLeft" style="left: 12px; bottom: 20px">&lt;</div>
       <div data-key="ArrowRight" style="left: 62px; bottom: 20px">&gt;</div>
-      <div data-key="KeyK" style="right: 62px; bottom: 20px">UNIK</div>
-      <div data-key="KeyJ" style="right: 12px; bottom: 20px">UŻYJ</div>
-      <div data-key="Space" style="right: 12px; bottom: 70px">SKOK</div>
-      <div id="fullscreen" data-key="KeyF">PEŁNY EKRAN</div>
+      <div data-key="KeyK" style="right: 62px; bottom: 20px" data-text="btnRoll"></div>
+      <div data-key="KeyJ" style="right: 12px; bottom: 20px" data-text="btnUse"></div>
+      <div data-key="ArrowUp" style="right: 12px; bottom: 70px" data-text="btnJump"></div>
+      <div id="fullscreen" data-key="KeyF" data-text="btnFullscreen"></div>
     </div>
   </div>
-  <div id="rotate">Obróć telefon poziomo</div>
+  <div id="rotate" data-text="rotate"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
