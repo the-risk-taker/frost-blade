@@ -3,10 +3,15 @@ import { SLOTS, canUse } from './player.js'
 import { buildIcons } from './sprites.js'
 import { version } from '../package.json'
 
+const touch = matchMedia('(pointer: coarse)').matches
+const START = touch ? 'DOTKNIJ' : 'ENTER'
+const RETRY = touch ? 'DOTKNIJ' : 'R'
+const CONTROLS = touch ? [] : ['A/D - ruch &nbsp; SPACJA - skok &nbsp; SHIFT - unik', 'J / LPM - użyj przedmiotu &nbsp; 1-9 - wybór', 'F - pełny ekran']
+
 const OVERLAYS = {
-  title: ['MROŹNE OSTRZE', 'A/D - ruch &nbsp; SPACJA - skok &nbsp; SHIFT - unik', 'J / LPM - użyj przedmiotu &nbsp; 1-9 - wybór', 'F - pełny ekran', 'Pokonaj wszystkich wrogów', 'ENTER - start'],
-  dead: ['KONIEC GRY', 'R - spróbuj ponownie'],
-  win: ['ZWYCIĘSTWO!', 'Wszyscy wrogowie pokonani', 'R - zagraj ponownie'],
+  title: ['MROŹNE OSTRZE', ...CONTROLS, 'Pokonaj wszystkich wrogów', `${START} - start`],
+  dead: ['KONIEC GRY', `${RETRY} - spróbuj ponownie`],
+  win: ['ZWYCIĘSTWO!', 'Wszyscy wrogowie pokonani', `${RETRY} - zagraj ponownie`],
 }
 
 const $ = id => document.getElementById(id)
@@ -15,9 +20,10 @@ export class Hud {
   constructor() {
     $('version').textContent = `v${version}`
     const icons = buildIcons()
-    this.slots = SLOTS.concat(Array(9 - SLOTS.length).fill(null)).map(item => {
+    this.slots = SLOTS.concat(Array(9 - SLOTS.length).fill(null)).map((item, i) => {
       const slot = document.createElement('div')
       slot.className = 'slot'
+      slot.dataset.key = `Digit${i + 1}`
       if (item) slot.append(icons[item])
       $('slots').append(slot)
       return slot

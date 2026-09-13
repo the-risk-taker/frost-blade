@@ -3,15 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Mroźne Ostrze</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <style>
-    html, body { margin: 0; height: 100%; background: #1590d0; overflow: hidden; }
+    html, body { margin: 0; height: 100%; background: #1590d0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
     #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Press Start 2P', monospace; color: #fff; }
     #stage canvas { image-rendering: pixelated; }
     #game { position: absolute; inset: 0; width: 100%; height: 100%; }
-    #counter, #fps, .popup, #overlay, .slot b { text-shadow: 1px 1px 0 #000; }
+    #counter, #fps, .popup, #overlay, .slot b, #touch { text-shadow: 1px 1px 0 #000; }
 
     #counter { position: absolute; left: 8px; top: 8px; font-size: 8px; }
     #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
@@ -37,10 +38,22 @@
     #overlay { position: absolute; left: 0; right: 0; top: 20%; padding: 14px 0 10px; background: rgba(8, 14, 20, 0.7); text-align: center; }
     #overlay h1 { margin: 0 0 14px; font-size: 20px; font-weight: normal; color: #ffe9a8; text-shadow: 2px 2px 0 #000; }
     #overlay p { margin: 0 0 8px; font-size: 8px; }
+
+    #touch, #rotate { display: none; }
+    #touch div { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; font-size: 8px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
+    #touch div:active { background: #6b3d22; }
+    #touch #fullscreen { right: 8px; top: 22px; width: auto; height: auto; padding: 5px; }
+    #touch [hidden] { display: none; }
+    @media (pointer: coarse) {
+      #touch { display: block; }
+    }
+    @media (pointer: coarse) and (orientation: portrait) {
+      #rotate { position: fixed; inset: 0; display: grid; place-items: center; background: #1590d0; font: 12px 'Press Start 2P', monospace; color: #fff; }
+    }
   </style>
 </head>
 <body>
-  <div id="stage">
+  <div id="stage" data-key="Enter">
     <canvas id="game"></canvas>
     <div id="counter"></div>
     <div id="fps"></div>
@@ -55,7 +68,16 @@
       <div id="slots"></div>
     </div>
     <div id="overlay"><p>Ładowanie...</p></div>
+    <div id="touch">
+      <div data-key="ArrowLeft" style="left: 12px; bottom: 20px">&lt;</div>
+      <div data-key="ArrowRight" style="left: 62px; bottom: 20px">&gt;</div>
+      <div data-key="KeyK" style="right: 62px; bottom: 20px">UNIK</div>
+      <div data-key="KeyJ" style="right: 12px; bottom: 20px">UŻYJ</div>
+      <div data-key="Space" style="right: 12px; bottom: 70px">SKOK</div>
+      <div id="fullscreen" data-key="KeyF">PEŁNY EKRAN</div>
+    </div>
   </div>
+  <div id="rotate">Obróć telefon poziomo</div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -2,13 +2,30 @@ const down = new Set()
 const pressed = new Set()
 let wheel = 0
 
+function press(code) {
+  if (!down.has(code)) pressed.add(code)
+  down.add(code)
+}
+
+const release = code => down.delete(code)
+
+// On touch screens an element with data-key works like that key while held
+function touch(e, action) {
+  if (e.pointerType === 'mouse') return
+  e.preventDefault()
+  const key = e.target.closest('[data-key]')?.dataset.key
+  if (key) action(key)
+}
+
 addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault()
-  if (!e.repeat) pressed.add(e.code)
-  down.add(e.code)
+  press(e.code)
 })
-addEventListener('keyup', e => down.delete(e.code))
+addEventListener('keyup', e => release(e.code))
 addEventListener('mousedown', e => pressed.add('Mouse' + e.button))
+addEventListener('pointerdown', e => touch(e, press))
+addEventListener('pointerup', e => touch(e, release))
+addEventListener('pointercancel', e => touch(e, release))
 addEventListener('contextmenu', e => e.preventDefault())
 addEventListener('wheel', e => { wheel += Math.sign(e.deltaY) })
 addEventListener('blur', () => down.clear())

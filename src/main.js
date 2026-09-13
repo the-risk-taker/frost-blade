@@ -19,16 +19,16 @@ function resize() {
   renderer?.resize()
 }
 
-function toggleFullscreen(e) {
-  if (e.code !== 'KeyF' || e.repeat) return
+function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen()
   else document.documentElement.requestFullscreen()
 }
 
 addEventListener('resize', resize)
-addEventListener('keydown', toggleFullscreen)
 addEventListener('keydown', unlockAudio)
 addEventListener('mousedown', unlockAudio)
+addEventListener('touchend', unlockAudio)
+document.getElementById('fullscreen').hidden = !document.fullscreenEnabled
 resize()
 
 // Let the loading message paint before the world is generated
@@ -54,6 +54,7 @@ function frame(now) {
   }
   const dt = Math.min(0.05, elapsed)
   game.update(dt)
+  if (input.hit('KeyF') && document.fullscreenEnabled) toggleFullscreen()
   input.endFrame()
   renderer.render(game, dt)
   hud.update(game, fps)
