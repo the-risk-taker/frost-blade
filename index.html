@@ -25,12 +25,15 @@
     #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Silkscreen', monospace; color: #fff; }
     #stage canvas { image-rendering: pixelated; }
     #game { position: absolute; inset: 0; width: 100%; height: 100%; }
-    #counter, #fps, .popup, #overlay, .slot b, #touch { text-shadow: 1px 1px 0 #000; }
+    #counter, #quests, #fps, .popup, #overlay, .slot b, #touch { text-shadow: 1px 1px 0 #000; }
 
     #counter { position: absolute; left: 8px; top: 8px; font-size: 8px; }
+    #quests { position: absolute; left: 8px; top: 20px; font-size: 8px; color: #ffe9a8; }
+    #quests p { margin: 0 0 2px; }
     #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
     #version { position: absolute; right: 8px; bottom: 8px; font-size: 8px; color: #fff8; }
     .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
+    .popup b { font-size: 16px; }
 
     #hud { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); padding: 5px 5px 4px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
     .bars { display: flex; align-items: center; height: 14px; margin-bottom: 5px; }
@@ -68,7 +71,7 @@
     #panel .row span { flex: 1; }
     #panel em { display: flex; align-items: center; gap: 2px; font-style: normal; }
     #panel [data-off] { opacity: 0.4; }
-    #panel [data-worn] em { color: #b8f5a0; }
+    #panel [data-worn] em, #panel [data-done] em { color: #b8f5a0; }
     #panel .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
     .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); image-rendering: pixelated; }
 
@@ -91,10 +94,11 @@
   <div id="stage" class="loading" data-key="Enter">
     <canvas id="game"></canvas>
     <div id="counter"></div>
+    <div id="quests"></div>
     <div id="fps"></div>
     <div id="version"></div>
     <div id="popups"></div>
-    <div id="boss" hidden><span data-text="bossName"></span><div class="bar"><i id="bossHp"></i></div></div>
+    <div id="boss" hidden><span id="bossName"></span><div class="bar"><i id="bossHp"></i></div></div>
     <div id="hud">
       <div class="bars">
         <div class="bar"><i id="mana"></i></div>
@@ -107,7 +111,7 @@
     <div id="panel" hidden></div>
     <div id="touch">
       <div data-key="KeyI" style="left: 12px; bottom: 70px" data-text="btnBag"></div>
-      <div id="trade" data-key="KeyE" style="right: 62px; bottom: 70px" hidden data-text="btnShop"></div>
+      <div id="trade" data-key="KeyE" style="right: 62px; bottom: 70px" hidden></div>
       <div data-key="ArrowLeft" style="left: 12px; bottom: 20px">&lt;</div>
       <div data-key="ArrowRight" style="left: 62px; bottom: 20px">&gt;</div>
       <div data-key="KeyK" style="right: 62px; bottom: 20px" data-text="btnRoll"></div>

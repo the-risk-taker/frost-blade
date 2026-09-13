@@ -1,17 +1,15 @@
 import * as THREE from 'three'
 import { GROUND, H, LEVEL_W, view } from './const.js'
-import { buildWorld } from './art.js'
-import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBolt, buildArrow, buildIcicle, buildItems, buildGlow } from './sprites.js'
-import { ATTACK_TIME, ROLL_TIME, BOW_CHARGE, aimArrow, flyArrow } from './player.js'
+import { buildWorld, buildVignette } from './art.js'
+import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildBolt, buildArrow, buildIcicle, buildItems, buildGlow } from './sprites.js'
+import { SLOTS, ATTACK_TIME, ROLL_TIME, BOW_CHARGE, aimArrow, flyArrow } from './player.js'
 import { TYPES } from './enemies.js'
-import { MERCHANTS } from './game.js'
 
 // Canvas colors are used as-is, without sRGB conversions.
 THREE.ColorManagement.enabled = false
 
 const PARALLAX = [['sky', 0, 0], ['clouds', 0.04, 4], ['far', 0.1, 0], ['near', 0.22, 0], ['cliffs', 0.4, 0], ['forest', 0.62, 0]]
 const MARGIN = 8
-const SKY_TOP = '#1590d0'
 const ORDER = { level: 10, snowBack: 15, npc: 18, enemy: 20, hero: 21, pickup: 22, projectile: 23, glow: 24, particles: 25, bars: 26, snowFront: 27, vignette: 30 }
 
 const SPRITE_VERTEX = `
@@ -96,18 +94,26 @@ function enemyFrame(e, frames) {
 // Animated sprite from a baked sheet. The mesh pivot is the sheet origin (feet).
 class Sprite {
     constructor(scene, sheet, order) {
-        const { cellW, cellH, originX, originY } = sheet
-        this.sheet = sheet
         this.uniforms = {
-            map: { value: sheet.texture },
+            map: { value: null },
             frame: { value: new THREE.Vector4() },
             flash: { value: new THREE.Vector4(0, 0, 0, 0) },
             alpha: { value: 1 },
         }
-        const geometry = new THREE.PlaneGeometry(cellW, cellH).translate(cellW / 2 - originX, originY - cellH / 2, 0)
         const material = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: SPRITE_VERTEX, fragmentShader: SPRITE_FRAGMENT, transparent: true, depthTest: false, depthWrite: false })
-        this.mesh = mesh(geometry, material, order)
+        this.mesh = mesh(new THREE.BufferGeometry(), material, order)
+        this.use(sheet)
         scene.add(this.mesh)
+    }
+
+    // Switches to another sheet, the plane follows its cell size and origin
+    use(sheet) {
+        if (sheet === this.sheet) return
+        const { cellW, cellH, originX, originY } = sheet
+        this.sheet = sheet
+        this.uniforms.map.value = sheet.texture
+        this.mesh.geometry.dispose()
+        this.mesh.geometry = new THREE.PlaneGeometry(cellW, cellH).translate(cellW / 2 - originX, originY - cellH / 2, 0)
     }
 
     show(x, y, dir, cell) {
@@ -156,38 +162,34 @@ const load = sheet => Object.assign(sheet, { texture: texture(sheet.canvas) })
 const hideFrom = (list, count) => list.slice(count).forEach(item => { (item.mesh ?? item).visible = false })
 
 export class Renderer {
-    constructor(canvas) {
+    constructor(canvas, stage) {
         this.gl = new THREE.WebGLRenderer({ canvas })
         this.gl.outputColorSpace = THREE.LinearSRGBColorSpace
         this.gl.setPixelRatio(1)
-        this.gl.setClearColor(SKY_TOP)
         this.scene = new THREE.Scene()
         this.camera = new THREE.OrthographicCamera(0, view.w, view.h - H, -H, -10, 10)
 
-        const world = buildWorld()
-        this.layers = PARALLAX.map(([name, factor, drift], i) => {
-            const map = texture(world[name])
-            map.wrapS = THREE.RepeatWrapping
-            return { map, factor, drift, mesh: this.add(mesh(corner(1, H), basic({ map }), i)) }
-        })
-        this.add(mesh(corner(LEVEL_W, H), basic({ map: texture(world.level) }), ORDER.level))
-        this.vignette = this.add(mesh(corner(1, 1), basic({ map: texture(world.vignette) }), ORDER.vignette))
+        this.layers = PARALLAX.map(([name, factor, drift], i) => ({ name, factor, drift, mesh: this.add(mesh(corner(1, H), basic({}), i)) }))
+        this.level = this.add(mesh(corner(LEVEL_W, H), basic({}), ORDER.level))
+        this.vignette = this.add(mesh(corner(1, 1), basic({ map: texture(buildVignette()) }), ORDER.vignette))
+        this.worlds = new Map()
 
         this.sheets = {
             ogre: load(buildOgre(false)), chief: load(buildOgre(true)), wolf: load(buildWolf(false)), alpha: load(buildWolf(true)),
-            archer: load(buildGoblin()), shaman: load(buildShaman()),
+            archer: load(buildGoblin()), shaman: load(buildShaman()), chest: load(buildChest()),
+            merchant: load(buildMerchant()), board: load(buildBoard()),
             bolt: load(buildBolt()), arrow: load(buildArrow()), icicle: load(buildIcicle()), items: load(buildItems()),
         }
         // One hero sheet per worn gear combination, baked when first needed
         this.heroSheets = {}
-        const merchant = load(buildMerchant())
-        this.merchants = MERCHANTS.map(() => new Sprite(this.scene, merchant, ORDER.npc))
         this.glowMap = texture(buildGlow())
+        this.npcs = []
         this.enemies = []
         this.bolts = []
         this.arrows = []
         this.shots = []
         this.icicles = []
+        this.traps = []
         this.pickups = []
         this.glows = []
         this.particles = new PixelBatch(this.scene, 2000, ORDER.particles)
@@ -197,12 +199,28 @@ export class Renderer {
             x: Math.random() * 2000, y: Math.random() * H, phase: Math.random() * 6,
             front: i < 30, depth: i < 30 ? 1.4 : 0.2 + Math.random() * 0.7, speed: i < 30 ? 70 : 12 + Math.random() * 30,
         }))
-        this.resize()
+        this.showStage(stage)
     }
 
     add(object) {
         this.scene.add(object)
         return object
+    }
+
+    // Stage art is painted when the stage is first shown and kept for retries
+    showStage(stage) {
+        if (!this.worlds.has(stage)) this.worlds.set(stage, buildWorld(stage))
+        const world = this.worlds.get(stage)
+        this.stage = stage
+        this.gl.setClearColor(world.top)
+        for (const layer of this.layers) {
+            layer.map?.dispose()
+            layer.map = layer.mesh.material.map = texture(world[layer.name])
+            layer.map.wrapS = THREE.RepeatWrapping
+        }
+        this.level.material.map?.dispose()
+        this.level.material.map = texture(world.level)
+        this.resize()
     }
 
     // The camera shows view.w x view.h pixels with the ground kept at the bottom.
@@ -220,6 +238,7 @@ export class Renderer {
     }
 
     render(game, dt) {
+        if (game.stage !== this.stage) this.showStage(game.stage)
         const p = game.player
         const cam = Math.round(game.camX)
         const shake = () => Math.round((Math.random() - 0.5) * game.shake)
@@ -232,22 +251,34 @@ export class Renderer {
         this.vignette.position.set(cam, view.h - H, 0)
 
         const blink = p.hurtT > 0 && Math.floor(game.time * 20) % 2
-        const heroSheet = this.heroSheets[Object.values(p.gear).join()] ??= load(buildHero(p.gear))
+        const item = SLOTS[p.slot] ?? 'sword'
+        const heroKey = Object.values(p.gear).join() + item
+        const heroSheet = this.heroSheets[heroKey] ??= load(buildHero(p.gear, item))
         this.hero ??= new Sprite(this.scene, heroSheet, ORDER.hero)
-        this.hero.sheet = heroSheet
-        this.hero.uniforms.map.value = heroSheet.texture
+        this.hero.use(heroSheet)
         this.hero.show(p.x, p.y, p.dir, heroFrame(p, heroSheet.frames, game.time))
         this.hero.mesh.visible = game.state !== 'dead' && !blink
         this.hero.uniforms.flash.value.set(1, 1, 1, p.hurtT > 0.65 ? 0.8 : 0)
 
-        this.merchants.forEach((merchant, i) => merchant.show(MERCHANTS[i], GROUND, -1, merchant.sheet.frames.idle[Math.floor(game.time * 2) % 4]))
+        const { board, merchant } = this.sheets
+        const npcs = [[board, game.stage.board], ...game.stage.merchants.map(x => [merchant, x])]
+        npcs.forEach(([sheet, x], i) => {
+            const npc = this.npcs[i] ??= new Sprite(this.scene, sheet, ORDER.npc)
+            npc.use(sheet)
+            npc.show(x, GROUND, -1, sheet.frames.idle[Math.floor(game.time * 2) % sheet.frames.idle.length])
+        })
+        hideFrom(this.npcs, npcs.length)
+
         game.enemies.forEach((e, i) => this.renderEnemy(e, i))
-        // Wolves called by a howl are left over after a restart
+        // Parts left over from a stage with more enemies
         for (const { sprite, back, fill } of this.enemies.slice(game.enemies.length)) sprite.mesh.visible = back.visible = fill.visible = false
         this.renderProjectiles(game.bolts, this.bolts, this.sheets.bolt)
         this.renderProjectiles(game.arrows, this.arrows, this.sheets.arrow)
         this.renderProjectiles(game.shots, this.shots, this.sheets.arrow)
         this.renderProjectiles(game.icicles, this.icicles, this.sheets.icicle)
+        // Hanging icicles point down and shake before they fall
+        const traps = game.traps.map(trap => ({ x: trap.x + (trap.t >= 0 ? Math.round(Math.sin(game.time * 60)) : 0), y: trap.y, vx: 0, vy: 1 }))
+        this.renderProjectiles(traps, this.traps, this.sheets.icicle)
 
         const { items } = this.sheets
         game.pickups.forEach((q, i) => {
@@ -287,11 +318,14 @@ export class Renderer {
         }
         this.particles.commit()
 
+        // No snowfall inside the cave
+        const snowing = game.stage.theme !== 'cave'
         for (const f of this.flakes) {
             f.y += f.speed * dt
             f.x += Math.sin(game.time + f.phase) * 8 * dt
             if (f.y > view.h) f.y = -4
             const x = (((f.x - cam * f.depth) % view.w) + view.w) % view.w
+            if (!snowing) continue
             if (f.front) this.snowFront.push(x, f.y, '#ffffff', 2)
             else this.snowBack.push(x, f.y, '#eaf6fb', f.depth > 0.6 ? 2 : 1)
         }
@@ -304,6 +338,7 @@ export class Renderer {
     }
 
     renderEnemy(e, i) {
+        const type = TYPES[e.type]
         const { sprite, back, fill } = this.enemies[i] ??= {
             sprite: new Sprite(this.scene, this.sheets[e.type], ORDER.enemy),
             back: this.add(mesh(corner(1, 1), basic({ color: '#1a0d08' }), ORDER.bars)),
@@ -312,14 +347,15 @@ export class Renderer {
         const alive = e.hp > 0
         const telegraph = e.state === 'windup' && e.t < 0.15
         const flash = e.flashT > 0 ? [1, 1, 1, 1] : e.frozenT > 0 ? [0.75, 0.93, 1, 0.7] : telegraph ? [1, 0.25, 0.15, 0.55] : e.slowT > 0 ? [0.6, 0.85, 1, 0.4] : [0, 0, 0, 0]
+        sprite.use(this.sheets[e.type])
         sprite.show(e.x, e.y, e.dir, enemyFrame(e, sprite.sheet.frames))
         sprite.mesh.visible = e.deadT < 0.8
         sprite.uniforms.alpha.value = alive ? 1 : 1 - e.deadT / 0.8
         sprite.uniforms.flash.value.set(...flash)
 
-        // The boss health is shown in the HUD instead
-        back.visible = fill.visible = alive && e.hp < e.maxHp && !TYPES[e.type].boss
-        const top = e.y - TYPES[e.type].height - 10
+        // The boss health is shown in the HUD instead, chests have none
+        back.visible = fill.visible = alive && e.hp < e.maxHp && !type.boss && !type.prop
+        const top = e.y - type.height - 10
         back.position.set(Math.round(e.x) - 13, -Math.round(top), 0)
         back.scale.set(26, 5, 1)
         fill.position.set(Math.round(e.x) - 12, -Math.round(top) - 1, 0)

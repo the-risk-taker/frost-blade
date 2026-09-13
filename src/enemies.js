@@ -1,6 +1,7 @@
 import { GROUND, LEVEL_W } from './const.js'
 import { sfx } from './sound.js'
 import { hurtPlayer } from './player.js'
+import { onIce } from './levels.js'
 
 const GRAVITY = 960
 
@@ -76,13 +77,15 @@ function alphaPattern(e, game) {
 // Every enemy runs the same loop: approach, wind up, attack, recover.
 // Heavy enemies can't be knocked back or interrupted while attacking.
 // Enemies with choose() pick one of their attack patterns before winding up.
+// Props like chests stand still, break when hit and don't count as foes.
 export const TYPES = {
     ogre: { hp: 60, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, blood: '#8f6446', strike: smash(20) },
-    chief: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, blood: '#8f6446', strike: smash(30) },
+    chief: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, boss: true, blood: '#8f6446', strike: smash(30) },
     wolf: { hp: 30, speed: 105, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.4, attack: 0.45, recover: 0.5, knockback: 160, blood: '#9aa8b3', strike: lunge, during: bite(12, 20) },
     archer: { hp: 24, speed: 55, stride: 10, height: 34, engage: 340, reach: 230, keepAway: 110, windup: 0.8, attack: 0.1, recover: 0.9, knockback: 150, blood: '#5d8a3a', strike: shoot },
     shaman: { hp: 30, speed: 45, stride: 8, height: 42, engage: 320, reach: 260, keepAway: 150, windup: 0.9, attack: 0.2, recover: 1.4, knockback: 150, blood: '#4a74a0', strike: icicle },
     alpha: { hp: 260, speed: 80, stride: 12, height: 40, engage: 360, reach: 220, knockback: 40, heavy: true, boss: true, blood: '#3b444c', choose: alphaPattern },
+    chest: { hp: 10, speed: 0, stride: 0, height: 16, engage: 0, reach: 0, knockback: 0, heavy: true, prop: true, blood: '#8a5a2b' },
 }
 
 // Loot table: [item, chance, count]
@@ -93,6 +96,7 @@ const LOOT = {
     archer: [['arrows', 0.8, 4], ['gold', 1, 3]],
     shaman: [['potion', 0.3, 1], ['gold', 1, 5]],
     alpha: [['gold', 1, 60], ['fur', 1, 3], ['fang', 1, 3]],
+    chest: [['gold', 1, 8], ['potion', 0.4, 1], ['arrows', 0.5, 5]],
 }
 
 export function createEnemy(type, x) {
@@ -122,6 +126,7 @@ export function hurtEnemy(e, damage, dir, game, slow = 0, freeze = 0) {
     game.flash(e.x + dir * 6, e.y - type.height / 2, '#ffffff', 36)
     sfx.hit()
     if (e.hp > 0) return
+    game.kills[e.type] = (game.kills[e.type] ?? 0) + 1
     game.shake = 6
     game.burst(e.x, e.y - type.height / 2, type.blood, 30, 160)
     sfx.smash()
@@ -140,7 +145,8 @@ export function updateEnemy(e, dt, game) {
     e.y = Math.min(GROUND, e.y + e.vy * dt)
     if (e.y === GROUND) {
         e.vy = 0
-        e.vx *= Math.max(0, 1 - dt * 8)
+        // Knocked back enemies slide far on ice
+        e.vx *= Math.max(0, 1 - dt * (onIce(game.stage, e.x) ? 1 : 8))
     }
     if (e.hp <= 0) {
         e.deadT += dt

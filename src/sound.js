@@ -54,4 +54,5 @@ export const sfx = {
     howl: () => tone(220, 520, 0.9, 'sawtooth', 0.08),
     shield: () => tone(500, 1500, 0.4, 'triangle', 0.12),
     shatter: () => { noise(0.25, 0.4, 4000); tone(1800, 600, 0.2, 'triangle', 0.08) },
+    crack: () => { noise(0.2, 0.25, 2500); tone(1200, 900, 0.15, 'square', 0.03) },
 }

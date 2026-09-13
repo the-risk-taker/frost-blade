@@ -1,13 +1,23 @@
 import { H, GROUND, LEVEL_W } from './const.js'
 import { rng, hash, noise, dither, paint, dot, outline, makeCanvas } from './pixels.js'
+import { onIce } from './levels.js'
 
 const FAR = { rim: '#d9f1f6', light: '#8ccbd9', mid: '#79bccd', shadow: '#5ea7bd', dark: '#4e97b0', crevice: '#43889f', snow: '#e8f7fa', snowShadow: '#b3dce8' }
 const NEAR = { rim: '#f2f8f7', light: '#a8b8b2', mid: '#93a49f', shadow: '#667779', dark: '#546569', crevice: '#3d4c52', snow: '#eef6f5', snowShadow: '#b7ccd0', grass: '#4aa85b', grassShadow: '#2e7d4c' }
+// Dark ice formations inside the cave
+const CAVE_FAR = { rim: '#5d93ab', light: '#2f5870', mid: '#294f66', shadow: '#1f3d52', dark: '#1a3447', crevice: '#142a3a', snow: '#6fb0c8', snowShadow: '#3f7890' }
+const CAVE_NEAR = { rim: '#7fb8cc', light: '#3a5f6f', mid: '#335666', shadow: '#243f4d', dark: '#1e3542', crevice: '#152833', snow: '#8fcfe0', snowShadow: '#4f8ea3' }
+// Mountains lit by the setting sun behind the castle
+const DUSK_FAR = { rim: '#f3c9b0', light: '#a8779a', mid: '#9a6c8e', shadow: '#7a5579', dark: '#6a4a6c', crevice: '#583d5c', snow: '#f0d4d0', snowShadow: '#c49aac' }
 const PINE = { dark: '#153a4b', mid: '#22687a', light: '#35908f', high: '#56b2a4', snow: '#e9f5f7', trunk: '#8a532e', trunkDark: '#5a341f' }
 const HAZY_PINE = { dark: '#2e6f80', mid: '#3c8391', light: '#4f9aa2', high: '#62aeb2', snow: '#d9eef2', trunk: '#4a7f8a', trunkDark: '#3c6f7a' }
+const SKIES = {
+  forest: ['#1590d0', '#1b9fdc', '#22ade6', '#2cb9ee', '#45c4f1'],
+  cave: ['#0a121b', '#0d1824', '#111f2e', '#152738', '#1a2f42'],
+  ruins: ['#3b2a55', '#5a3a66', '#80506e', '#b0686e', '#d98a6e'],
+}
 
-function sky() {
-  const bands = ['#1590d0', '#1b9fdc', '#22ade6', '#2cb9ee', '#45c4f1']
+function sky(bands) {
   return paint(64, H, (x, y) => {
     const t = y / 44
     const i = Math.min(bands.length - 1, Math.floor(t))
@@ -100,6 +110,52 @@ function cliffs(seed) {
   })
 }
 
+// Cave ceiling with rock teeth and icicles hanging from it
+function ceiling(seed) {
+  const w = 960, r = rng(seed)
+  const base = Array.from({ length: w }, (_, x) => 20 + Math.round(noise(x, 0, 32, seed, w) * 30))
+  const tips = [...base]
+  for (let i = 0; i < 60; i++) {
+    const cx = Math.floor(r() * w), length = 15 + r() * 70, half = 2 + r() * 5
+    for (let dx = -Math.floor(half); dx <= half; dx++) {
+      const x = (cx + dx + w) % w
+      tips[x] = Math.max(tips[x], Math.round(base[x] + length * (1 - Math.abs(dx) / half)))
+    }
+  }
+  return paint(w, H, (x, y) => {
+    if (y >= tips[x]) return
+    if (y === tips[x] - 1) return '#6fb0c8'
+    if (y >= base[x]) return x % 3 ? '#2b5870' : '#3d7890'
+    return noise(x, y, 8, seed + 1, w) > 0.6 ? '#1c2c38' : '#16222c'
+  })
+}
+
+// Ruined walls and towers of the castle, dark against the dusk
+function castle(seed) {
+  const w = 1280, r = rng(seed)
+  const tops = [], towers = []
+  for (let x = 0; x < w;) {
+    const tower = r() < 0.4
+    const width = tower ? 28 + Math.floor(r() * 16) : 50 + Math.floor(r() * 90)
+    const top = tower ? 80 + Math.floor(r() * 40) : 140 + Math.floor(r() * 40)
+    for (let i = 0; i < width && x < w; i++, x++) {
+      tops[x] = top + Math.round(Math.max(0, noise(x, top, 10, seed, w) - 0.55) * 120)
+      towers[x] = tower ? i : -1
+    }
+  }
+  return paint(w, H, (x, y) => {
+    const d = y - tops[x]
+    const merlon = Math.floor(x / 5) % 2 === 0
+    if (d < -5 || (d < 0 && !merlon)) return
+    if (d === -5 || (d === 0 && !merlon)) return '#e9dce6'
+    // Window slits in the towers
+    if (towers[x] % 14 > 5 && towers[x] % 14 < 9 && d % 36 > 12 && d % 36 < 26) return '#1c1224'
+    const row = Math.floor(y / 5)
+    if (y % 5 === 0 || (x + (row & 1) * 5) % 10 === 0) return '#3b2e45'
+    return noise(x, y, 12, seed + 1, w) > 0.55 ? '#5c4a66' : '#4f3f59'
+  })
+}
+
 // Pine tree with tiered branches, snow on each tier and a lit left side.
 function pine(ctx, cx, base, h, r, c) {
   const seed = Math.floor(r() * 1e6)
@@ -126,19 +182,24 @@ function pine(ctx, cx, base, h, r, c) {
   }
 }
 
-function forest(seed) {
+// Snowy bank with hazy pines, in the cave a bank of ice with crystals
+function forest(seed, cave) {
   const w = 960, r = rng(seed)
+  const [edge, shade, fill] = cave ? ['#8fc3d6', '#2a4b5c', '#34596b'] : ['#f4fafc', '#c0d9e4', '#d6e8f0']
   const bank = Array.from({ length: w }, (_, x) => 240 + Math.round(noise(x, 0, 24, seed, w) * 8))
   const canvas = paint(w, H, (x, y) => {
     if (y < bank[x]) return
-    if (y === bank[x]) return '#f4fafc'
-    return noise(x, y, 12, seed + 1, w) > 0.6 ? '#c0d9e4' : '#d6e8f0'
+    if (y === bank[x]) return edge
+    return noise(x, y, 12, seed + 1, w) > 0.6 ? shade : fill
   })
   const ctx = canvas.getContext('2d')
-  for (let x = 0; x < w; x += 10 + r() * 30) {
+  for (let x = 0; x < w; x += cave ? 40 + r() * 60 : 10 + r() * 30) {
     const h = 28 + r() * 36, base = 244 + Math.floor(r() * 4), treeSeed = Math.floor(r() * 1e6)
-    for (const shift of [-w, 0, w])
-      if (x + shift > -40 && x + shift < w + 40) pine(ctx, Math.floor(x + shift), base, h, rng(treeSeed), HAZY_PINE)
+    for (const shift of [-w, 0, w]) {
+      if (x + shift <= -40 || x + shift >= w + 40) continue
+      if (cave) crystals(ctx, Math.floor(x + shift), base, rng(treeSeed))
+      else pine(ctx, Math.floor(x + shift), base, h, rng(treeSeed), HAZY_PINE)
+    }
   }
   return canvas
 }
@@ -187,21 +248,45 @@ function crystals(ctx, cx, base, r) {
   })
 }
 
-function level(seed) {
+// Broken stone column with snow on its jagged top
+function pillar(ctx, cx, h, r) {
+  const seed = Math.floor(r() * 1e6), half = 7
+  shadow(ctx, cx, GROUND - 1, half + 3)
+  stamp(ctx, cx - half - 1, GROUND - h - 1, half * 2 + 3, h + 2, '#1a1420', c => {
+    for (let x = -half; x <= half; x++) {
+      const top = Math.floor(noise(x, 0, 3, seed) * 10)
+      for (let y = top; y < h; y++) {
+        const color = y < top + 2 ? '#eeeaf2' : y % 20 === 0 ? '#3f3748' : x < 3 - half ? '#a398ae' : x > half - 3 ? '#4f4658' : x % 4 === 0 ? '#5f5569' : '#776b83'
+        dot(c, half + 1 + x, y + 1, color)
+      }
+    }
+  })
+}
+
+function level(seed, stage) {
   const r = rng(seed)
+  const { theme } = stage
+  const cave = theme === 'cave'
+  // Snow drifts, in the cave frosted rock
+  const [top, shade, fill] = cave ? ['#a9d6e6', '#3f6b80', '#52808f'] : ['#ffffff', '#c2dbe7', '#e4f1f6']
   const drift = Array.from({ length: LEVEL_W }, (_, x) => 228 + Math.round(noise(x, 0, 48, seed) * 14))
+  // The cave ceiling hangs lower above the icicle traps
+  const roof = Array.from({ length: LEVEL_W }, (_, x) => cave ? 10 + Math.round(noise(x, 0, 20, seed) * 10) + Math.max(0, 16 - 2 * Math.min(...stage.traps.map(trap => Math.abs(trap - x)))) : 0)
   const canvas = paint(LEVEL_W, H, (x, y) => {
+    if (y < roof[x]) return y === roof[x] - 1 ? '#3f7f99' : '#131d26'
     if (y < drift[x]) return
+    // Glossy ice sheet over the path
+    if (onIce(stage, x) && y >= GROUND - 2 && y < GROUND + 4) return y === GROUND - 2 ? '#ffffff' : hash(x >> 2, y, seed) > 0.85 ? '#e8fbff' : '#8fd3ea'
     if (y < GROUND) {
-      if (y === drift[x]) return '#ffffff'
+      if (y === drift[x]) return top
       const n = noise(x, y, 14, seed + 1) + (y - drift[x]) * 0.004
-      if (n > 0.66 || (n > 0.6 && dither(x, y))) return '#c2dbe7'
-      return hash(x, y, seed + 2) > 0.997 ? '#ffffff' : '#e4f1f6'
+      if (n > 0.66 || (n > 0.6 && dither(x, y))) return shade
+      return hash(x, y, seed + 2) > 0.997 ? top : fill
     }
     // Snow lip with icicles over dark cobblestones
     const d = y - GROUND
     const lip = hash(x >> 1, 5, seed) > 0.7 ? 4 : 3
-    if (d < lip) return d === 0 ? '#ffffff' : '#e3f0f5'
+    if (d < lip) return d === 0 ? top : fill
     const icicle = hash(Math.floor(x / 3), 6, seed)
     if (x % 3 === 1 && icicle > 0.8 && d < lip + (icicle - 0.8) * 40) return '#bfe3ee'
     const row = Math.floor(d / 6), shift = row & 1 ? 4 : 0
@@ -214,17 +299,20 @@ function level(seed) {
     return deep ? (v < 0.5 ? '#2b3135' : '#33393e') : v < 0.5 ? '#474f55' : '#555e64'
   })
   const ctx = canvas.getContext('2d')
-  for (let x = 40; x < LEVEL_W; x += 70 + r() * 150) {
-    const h = Math.floor(110 + r() * 60), half = Math.ceil(h * 0.25) + 2
-    shadow(ctx, x, GROUND - 1, half)
-    stamp(ctx, x - half, GROUND - h - 3, half * 2, h + 4, '#0e2a36', c => pine(c, half, h + 2, h, r, PINE))
+  if (theme === 'forest') {
+    for (let x = 40; x < LEVEL_W; x += 70 + r() * 150) {
+      const h = Math.floor(110 + r() * 60), half = Math.ceil(h * 0.25) + 2
+      shadow(ctx, x, GROUND - 1, half)
+      stamp(ctx, x - half, GROUND - h - 3, half * 2, h + 4, '#0e2a36', c => pine(c, half, h + 2, h, r, PINE))
+    }
   }
+  if (theme === 'ruins') for (let x = 60; x < LEVEL_W; x += 140 + r() * 240) pillar(ctx, Math.floor(x), Math.floor(50 + r() * 90), r)
   for (let i = 0; i < 36; i++) boulder(ctx, Math.floor(r() * LEVEL_W), GROUND + 2, Math.floor(10 + r() * 16), Math.floor(9 + r() * 12), r)
-  for (let i = 0; i < 18; i++) crystals(ctx, Math.floor(r() * LEVEL_W), GROUND + 1, r)
+  for (let i = 0; i < (cave ? 50 : 18); i++) crystals(ctx, Math.floor(r() * LEVEL_W), GROUND + 1, r)
   return canvas
 }
 
-function vignette() {
+export function buildVignette() {
   // Stretched over the whole view, so its own size only sets the shape
   const w = 640, h = 360
   const canvas = makeCanvas(w, h)
@@ -237,15 +325,18 @@ function vignette() {
   return canvas
 }
 
-export function buildWorld() {
+// Everything painted for one stage. Top is the sky color shown above the painted area.
+export function buildWorld(stage) {
+  const { theme } = stage
+  const cave = theme === 'cave'
   return {
-    sky: sky(),
-    clouds: clouds(7),
-    far: mountains(11, 6, 20, 75, 0.95, FAR),
-    near: mountains(23, 8, 70, 115, 1.15, NEAR),
-    cliffs: cliffs(31),
-    forest: forest(57),
-    level: level(42),
-    vignette: vignette(),
+    top: SKIES[theme][0],
+    sky: sky(SKIES[theme]),
+    clouds: cave ? makeCanvas(64, H) : clouds(7),
+    far: mountains(11, 6, 20, 75, 0.95, { forest: FAR, cave: CAVE_FAR, ruins: DUSK_FAR }[theme]),
+    near: theme === 'ruins' ? castle(23) : mountains(23, 8, 70, 115, 1.15, cave ? CAVE_NEAR : NEAR),
+    cliffs: cave ? ceiling(31) : cliffs(31),
+    forest: forest(57, cave),
+    level: level({ forest: 42, cave: 17, ruins: 71 }[theme], stage),
   }
 }

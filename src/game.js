@@ -3,18 +3,10 @@ import { input } from './input.js'
 import { sfx } from './sound.js'
 import { give } from './items.js'
 import { t } from './lang.js'
+import { LEVELS } from './levels.js'
+import { updateQuests } from './quests.js'
 import { createPlayer, updatePlayer, hurtPlayer, flyArrow } from './player.js'
 import { TYPES, createEnemy, updateEnemy, hurtEnemy } from './enemies.js'
-
-const ENEMIES = [
-    ['wolf', 520], ['wolf', 590], ['ogre', 900], ['archer', 1250],
-    ['shaman', 1450], ['ogre', 1600], ['wolf', 1700], ['archer', 2050],
-    ['ogre', 2200], ['shaman', 2350], ['wolf', 2600], ['wolf', 2670],
-    ['archer', 2850], ['chief', 3250], ['shaman', 3380], ['archer', 3450],
-    ['alpha', 3950],
-]
-
-export const MERCHANTS = [1100, 3000]
 
 function age(list, dt) {
     for (const item of list) item.life -= dt
@@ -24,15 +16,22 @@ function age(list, dt) {
 export class Game {
     constructor() {
         this.time = 0
-        this.reset()
+        this.startLevel(0)
         this.state = 'title'
     }
 
-    reset() {
+    // The hero carries his bag and gear to the next stage. A retry brings them back as they were when the stage began.
+    startLevel(index, hero = createPlayer()) {
+        this.level = index
+        this.stage = LEVELS[index]
+        this.player = { ...createPlayer(), bag: structuredClone(hero.bag), gear: { ...hero.gear } }
+        this.saved = structuredClone(this.player)
+        this.quests = this.stage.quests.map(quest => ({ ...quest, state: 'new' }))
+        this.kills = {}
         this.state = 'play'
         this.panel = null
-        this.player = createPlayer()
-        this.enemies = ENEMIES.map(([type, x]) => createEnemy(type, x))
+        this.enemies = this.stage.enemies.map(([type, x]) => createEnemy(type, x))
+        this.traps = this.stage.traps.map(x => ({ x, y: 36, t: -1 }))
         this.bolts = []
         this.arrows = []
         this.shots = []
@@ -73,16 +72,28 @@ export class Game {
         this.panel = this.panel === panel ? null : panel
     }
 
-    merchantNear() {
-        return MERCHANTS.find(x => Math.abs(this.player.x - x) < 36)
+    // The quest board or the merchant the hero stands at, with the panel it opens
+    nearby() {
+        const { x } = this.player
+        const { board, merchants } = this.stage
+        if (Math.abs(x - board) < 30) return { x: board, panel: 'quests' }
+        const merchant = merchants.find(m => Math.abs(x - m) < 36)
+        return merchant && { x: merchant, panel: 'shop' }
+    }
+
+    // All foes are down, chests don't count
+    cleared() {
+        return this.enemies.every(e => e.hp <= 0 || TYPES[e.type].prop)
     }
 
     update(dt) {
         this.time += dt
-        if (this.state !== 'play' && input.hit('Enter', 'KeyR')) return this.reset()
+        // The overlay with the next stage name was shown last frame, now the stage can load
+        if (this.state === 'travel') return this.startLevel(this.level + 1, this.player)
+        if (this.state !== 'play' && input.hit('Enter', 'KeyR')) return this.state === 'dead' ? this.startLevel(this.level, this.saved) : this.startLevel(0)
         if (this.state === 'play') {
             if (input.hit('KeyI')) this.toggle('bag')
-            if (input.hit('KeyE') && (this.panel === 'shop' || this.merchantNear())) this.toggle('shop')
+            if (input.hit('KeyE') && (this.panel || this.nearby())) this.panel = this.panel ? null : this.nearby().panel
             if (input.hit('Escape')) this.panel = null
         }
         if (this.panel) return
@@ -93,11 +104,15 @@ export class Game {
         this.shake = Math.max(0, this.shake - dt * 25)
 
         const p = this.player
-        if (this.state === 'play') updatePlayer(p, dt, this)
+        if (this.state === 'play') {
+            updatePlayer(p, dt, this)
+            updateQuests(this)
+        }
         for (const e of this.enemies) updateEnemy(e, dt, this)
         this.updateBolts(dt)
         this.updateArrows(dt)
         this.updateShots(dt)
+        this.updateTraps(dt)
         this.updateIcicles(dt)
         this.updatePickups(dt)
         for (const q of this.particles) {
@@ -109,7 +124,11 @@ export class Game {
         for (const q of this.popups) q.y -= 24 * dt
         this.popups = age(this.popups, dt)
         this.flashes = age(this.flashes, dt)
-        if (this.state === 'play' && this.enemies.every(e => e.hp <= 0)) this.state = 'win'
+        if (this.state === 'play' && this.cleared()) {
+            // The last stage ends with its last foe, the others with a walk to the right edge
+            if (this.level === LEVELS.length - 1) this.state = 'win'
+            else if (p.x > LEVEL_W - 40) this.state = 'travel'
+        }
 
         const target = p.x - view.w / 2 + p.dir * 50
         this.camX = Math.max(0, Math.min(LEVEL_W - view.w, this.camX + (target - this.camX) * Math.min(1, dt * 4)))
@@ -156,7 +175,21 @@ export class Game {
         this.shots = age(this.shots, dt)
     }
 
-    // Frost sparkles mark the ground where the icicle will shatter
+    // Hanging icicles shake when the hero comes close, then fall
+    updateTraps(dt) {
+        for (const trap of this.traps) {
+            if (trap.t >= 0) {
+                trap.t += dt
+            } else if (this.state === 'play' && Math.abs(this.player.x - trap.x) < 50) {
+                trap.t = 0
+                sfx.crack()
+            }
+            if (trap.t > 0.4) this.icicles.push({ x: trap.x, y: trap.y, vx: 0, vy: 1, life: 3 })
+        }
+        this.traps = this.traps.filter(trap => trap.t <= 0.4)
+    }
+
+    // Icicles shatter on anyone below. Frost sparkles mark the ground where they will land.
     updateIcicles(dt) {
         const p = this.player
         for (const s of this.icicles) {
@@ -168,6 +201,7 @@ export class Game {
             this.burst(s.x, GROUND, '#bff0ff', 20, 140)
             sfx.shatter()
             if (this.state === 'play' && Math.abs(p.x - s.x) < 16 && p.y > GROUND - 40) hurtPlayer(p, 16, Math.sign(p.x - s.x) || 1, this)
+            for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - s.x) < 20) hurtEnemy(e, 30, Math.sign(e.x - s.x) || 1, this)
         }
         this.icicles = age(this.icicles, dt)
     }

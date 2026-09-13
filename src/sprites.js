@@ -131,7 +131,7 @@ function sheet(cellW, cellH, originX, originY, animations, scale = 1) {
     return { canvas, frames, cellW, cellH, originX, originY }
 }
 
-function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, gear }) {
+function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, gear, item = 'sword' }) {
     const c = { ...HERO, ...GEAR[gear.body] }
     const moving = walk !== undefined
     const step = moving ? Math.round(Math.sin(walk) * 3) : 0
@@ -185,16 +185,35 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, g
     rect(0, -27 + y, 4, 1, c.scarf[2])
 
     const shoulder = -23 + y
-    if (draw !== undefined) {
-        // Bow held forward, the string and arrow pulled back by draw pixels
+    // With the bow selected but not drawn, it hangs unstrung until aiming takes over
+    if (draw !== undefined || item === 'bow') {
+        const d = draw ?? 0
         for (let i = -9; i <= 9; i++) rect(9 + Math.round(4 * (1 - (i / 9) ** 2)), shoulder + i, 2, 1, Math.abs(i) > 7 ? GOBLIN.bow[0] : GOBLIN.bow[1])
-        line(9, shoulder - 9, 9 - draw, shoulder, GOBLIN.string)
-        line(9 - draw, shoulder, 9, shoulder + 9, GOBLIN.string)
-        line(8 - draw, shoulder, 20 - draw, shoulder, GOBLIN.shaft)
-        rect(20 - draw, shoulder - 1, 3, 3, GOBLIN.tip)
+        line(9, shoulder - 9, 9 - d, shoulder, GOBLIN.string)
+        line(9 - d, shoulder, 9, shoulder + 9, GOBLIN.string)
+        if (draw !== undefined) {
+            line(8 - d, shoulder, 20 - d, shoulder, GOBLIN.shaft)
+            rect(20 - d, shoulder - 1, 3, 3, GOBLIN.tip)
+        }
         line(1, shoulder, 12, shoulder, c.shirt[1], 3)
         rect(12, shoulder - 1, 3, 3, c.skin[1])
-        line(0, shoulder + 1, 8 - draw, shoulder, c.skin[1], 2)
+        line(0, shoulder + 1, 8 - d, shoulder, c.skin[1], 2)
+        return
+    }
+
+    // Frost bolt and potion are simply held forward, no swing pose for them
+    if (item === 'frost') {
+        const hand = ray(1, shoulder, 0.9)(9)
+        line(1, shoulder, ...hand, c.shirt[1], 3)
+        rect(hand[0] - 2, hand[1] - 2, 4, 4, '#3aa6e0')
+        rect(hand[0] - 1, hand[1] - 1, 2, 2, '#ffffff')
+        return
+    }
+    if (item === 'potion') {
+        const hand = ray(1, shoulder, 0.9)(9)
+        line(1, shoulder, ...hand, c.shirt[1], 3)
+        rect(hand[0] - 2, hand[1] - 4, 4, 3, '#8a5a2b')
+        rect(hand[0] - 2, hand[1] - 1, 4, 4, '#d42a30')
         return
     }
 
@@ -525,8 +544,8 @@ export function buildArrow() {
     })
 }
 
-export function buildHero(gear) {
-    const pose = extra => p => hero(p, { gear, ...extra })
+export function buildHero(gear, item) {
+    const pose = extra => p => hero(p, { gear, item, ...extra })
     return sheet(64, 60, 31, 55, {
         idle: phases(4).map(t => pose({ bob: t < 0.5 ? 0 : 1, wave: t })),
         walk: phases(8).map(t => pose({ walk: t * Math.PI * 2, wave: t * 2 })),
@@ -534,6 +553,47 @@ export function buildHero(gear) {
         attack: phases(6).map(t => pose({ swing: t })),
         roll: phases(6).map(t => p => roll(p, t)),
         aim: [0, 3, 6].map(draw => pose({ draw })),
+    })
+}
+
+function chest({ rect }) {
+    rect(-9, -12, 18, 12, '#8a5a2b')
+    rect(-9, -14, 18, 4, '#a8703a')
+    rect(-9, -14, 18, 1, '#c98f4a')
+    rect(-9, -10, 18, 1, '#5a3418')
+    rect(-9, -2, 18, 2, '#5a3418')
+    rect(-7, -14, 2, 14, IRON[1])
+    rect(5, -14, 2, 14, IRON[1])
+    rect(-1, -11, 3, 4, HERO.gold)
+    rect(0, -9, 1, 1, INK)
+}
+
+// Treasure chest with a glint now and then
+export function buildChest() {
+    const glint = p => {
+        chest(p)
+        return () => p.rect(3, -13, 1, 1, '#ffffff')
+    }
+    return sheet(24, 20, 12, 18, { idle: [chest, chest, chest, glint] })
+}
+
+// Quest board with notes pinned under a snowy roof
+export function buildBoard() {
+    return sheet(40, 52, 20, 50, {
+        idle: [({ rect }) => {
+            rect(-12, -40, 3, 40, HERO.hilt)
+            rect(9, -40, 3, 40, HERO.hilt)
+            rect(-14, -37, 28, 20, HERO.vest[1])
+            rect(-14, -37, 28, 2, HERO.vest[2])
+            rect(-15, -41, 30, 4, HERO.vest[0])
+            rect(-15, -42, 30, 1, '#eef6f5')
+            rect(-11, -33, 9, 11, HERO.shirt[2])
+            rect(1, -32, 10, 8, HERO.shirt[1])
+            for (const y of [-30, -27, -24]) rect(-9, y, 5, 1, HERO.shirt[0])
+            for (const y of [-29, -26]) rect(3, y, 6, 1, HERO.shirt[0])
+            rect(-7, -34, 1, 1, HERO.scarf[1])
+            rect(6, -33, 1, 1, HERO.scarf[1])
+        }],
     })
 }
 

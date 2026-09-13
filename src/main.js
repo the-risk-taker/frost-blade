@@ -37,7 +37,7 @@ resize()
 await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))
 
 const game = new Game()
-renderer = new Renderer(document.getElementById('game'))
+renderer = new Renderer(document.getElementById('game'), game.stage)
 const hud = new Hud(game)
 stage.classList.remove('loading')
 

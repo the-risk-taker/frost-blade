@@ -3,6 +3,7 @@ import { input } from './input.js'
 import { sfx } from './sound.js'
 import { TYPES, hurtEnemy } from './enemies.js'
 import { stat } from './items.js'
+import { onIce } from './levels.js'
 
 export const SLOTS = ['sword', 'bow', 'frost', 'potion']
 // Mana skills have their own keys, touch screens have buttons for them
@@ -134,7 +135,8 @@ export function updatePlayer(p, dt, game) {
         if (p.rollT > ROLL_TIME) p.rollT = -1
     } else {
         const target = stunned || (p.attackT >= 0 && p.onGround) || p.drawT >= 0 ? 0 : move * SPEED
-        p.vx += (target - p.vx) * Math.min(1, dt * (stunned ? 3 : 14))
+        // Ice gives little grip, so the hero slides when he starts and stops
+        p.vx += (target - p.vx) * Math.min(1, dt * (stunned ? 3 : p.onGround && onIce(game.stage, p.x) ? 1.5 : 14))
         if (!stunned) {
             if (move && p.attackT < 0) p.dir = move
             if (input.hit(...JUMP_KEYS) && p.onGround) {
