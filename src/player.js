@@ -50,6 +50,13 @@ export function addXp(p, amount, game) {
     sfx.coin()
 }
 
+// Shows a one-time tip the first time a mechanic is used, never again this session
+function hint(game, key) {
+    if (game.hints.has(key)) return
+    game.hints.add(key)
+    game.popup(game.player.x, game.player.y - 70, t(`hint${key}`), '#ffe9a8')
+}
+
 export function canUse(p, item) {
     return { sword: p.stamina >= 12, bow: p.bag.arrows > 0, frost: p.mana >= 25, freeze: p.mana >= 30, shield: p.mana >= 40 && p.shieldT <= 0, potion: p.bag.potion > 0 }[item]
 }
@@ -104,6 +111,7 @@ function useItem(p, item, game) {
             p.mana -= 30
             game.burst(p.x + p.dir * 14, p.y - 22, '#bff0ff', 12, 80, 1)
             sfx.cast()
+            hint(game, 'Freeze')
         } else {
             p.stamina -= 12
             p.restT = 0.6
@@ -113,6 +121,7 @@ function useItem(p, item, game) {
         sfx.swing()
     } else if (item === 'bow') {
         p.drawT = 0
+        hint(game, 'Bow')
     } else if (item === 'frost') {
         p.mana -= 25
         p.cooldown = 0.35
@@ -124,6 +133,7 @@ function useItem(p, item, game) {
         p.cooldown = 0.3
         game.flash(p.x, p.y - 18, '#8fdcff', 64)
         sfx.shield()
+        hint(game, 'Shield')
     } else if (item === 'potion') {
         p.bag.potion--
         p.hp = Math.min(p.maxHp, p.hp + 40)
@@ -169,6 +179,7 @@ export function updatePlayer(p, dt, game) {
                 p.restT = 0.6
                 p.rollT = 0
                 p.attackT = p.drawT = -1
+                hint(game, 'Roll')
                 if (move) p.dir = move
                 sfx.roll()
             }

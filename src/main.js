@@ -58,6 +58,7 @@ function frame(now) {
   const dt = Math.min(0.05, elapsed)
   game.update(dt)
   if (input.hit('KeyF') && document.fullscreenEnabled) toggleFullscreen()
+  if (input.hit('KeyH')) stage.classList.toggle('photo')
   input.endFrame()
   renderer.render(game, dt)
   hud.update(game, fps)

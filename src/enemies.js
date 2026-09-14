@@ -127,6 +127,7 @@ export function hurtEnemy(e, damage, dir, game, slow = 0, freeze = 0) {
     sfx.hit()
     if (e.hp > 0) return
     game.kills[e.type] = (game.kills[e.type] ?? 0) + 1
+    if (!type.prop) game.totalKills++
     game.shake = 6
     game.burst(e.x, e.y - type.height / 2, type.blood, 30, 160)
     sfx.smash()

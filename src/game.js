@@ -7,6 +7,7 @@ import { LEVELS } from './levels.js'
 import { updateQuests } from './quests.js'
 import { createPlayer, updatePlayer, hurtPlayer, flyArrow } from './player.js'
 import { TYPES, createEnemy, updateEnemy, hurtEnemy } from './enemies.js'
+import { loadProgress, saveProgress, clearProgress } from './save.js'
 
 function age(list, dt) {
     for (const item of list) item.life -= dt
@@ -16,8 +17,20 @@ function age(list, dt) {
 export class Game {
     constructor() {
         this.time = 0
+        this.playTime = 0
+        this.totalKills = 0
+        this.hints = new Set()
+        this.progress = loadProgress()
         this.startLevel(0)
         this.state = 'title'
+    }
+
+    // Resumes a saved checkpoint: stage plus the hero's level/xp/bag/gear
+    continueGame() {
+        if (!this.progress) return
+        const { stage, bag, gear, ...growth } = this.progress
+        const hero = { ...createPlayer(), ...growth, bag: { ...createPlayer().bag, ...bag }, gear: { ...createPlayer().gear, ...gear } }
+        this.startLevel(stage, hero)
     }
 
     // The hero carries his bag and gear to the next stage. A retry brings them back as they were when the stage began.
@@ -92,8 +105,10 @@ export class Game {
 
     update(dt) {
         this.time += dt
+        this.playTime += dt
         // The overlay with the next stage name was shown last frame, now the stage can load
         if (this.state === 'travel') return this.startLevel(this.level + 1, this.player)
+        if (this.state === 'title' && this.progress && input.hit('KeyC')) return this.continueGame()
         if (this.state !== 'play' && input.hit('Enter', 'KeyR')) return this.state === 'dead' ? this.startLevel(this.level, this.saved) : this.startLevel(0)
         if (this.state === 'play') {
             if (input.hit('KeyI')) this.toggle('bag')
@@ -130,8 +145,13 @@ export class Game {
         this.flashes = age(this.flashes, dt)
         if (this.state === 'play' && this.cleared()) {
             // The last stage ends with its last foe, the others with a walk to the right edge
-            if (this.level === LEVELS.length - 1) this.state = 'win'
-            else if (p.x > LEVEL_W - 40) this.state = 'travel'
+            if (this.level === LEVELS.length - 1) {
+                this.state = 'win'
+                clearProgress()
+            } else if (p.x > LEVEL_W - 40) {
+                this.state = 'travel'
+                saveProgress(this, this.level + 1)
+            }
         }
 
         const target = p.x - view.w / 2 + p.dir * 50

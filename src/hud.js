@@ -19,6 +19,9 @@ const questName = quest => quest.item
     ? t('questCollect', { item: t(`item.${quest.item}`), count: quest.count })
     : t('questKill', { enemy: t(`enemy.${quest.kill}`), count: quest.count })
 
+const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+const summaryLine = game => t('summary', { time: formatTime(game.playTime), kills: game.totalKills, gold: game.player.bag.gold })
+
 function overlayLines(game) {
     if (game.state === 'travel') {
         const stage = LEVELS[game.level + 1]
@@ -27,12 +30,13 @@ function overlayLines(game) {
     const start = touch ? t('tap') : 'ENTER'
     const retry = touch ? t('tap') : 'R'
     const controls = touch ? [t('hintTouch')] : [t('keysMove'), t('keysUse'), t('keysSkills'), t('keysMenu')]
-    // An empty data-key keeps a tap on a language from also starting the game
+    // An empty data-key keeps a tap on a language (or continue) from also starting a new game
     const languages = LANGUAGES.map(code => `<span data-language="${code}" data-key="" ${code === language() ? 'data-active' : ''}>${languageName(code)}</span>`).join(' ')
+    const continueLine = game.progress ? [`<span data-continue data-key="">${t('continueGame', { key: touch ? t('tap') : 'C' })}</span>`] : []
     return {
-        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), `${t('language')}: ${languages}`],
-        dead: [t('dead'), t('retry', { key: retry })],
-        win: [t('win'), t('winText'), t('again', { key: retry })],
+        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), ...continueLine, `${t('language')}: ${languages}`],
+        dead: [t('dead'), t('retry', { key: retry }), summaryLine(game)],
+        win: [t('win'), t('winText'), summaryLine(game), t('again', { key: retry })],
     }[game.state]
 }
 
@@ -76,8 +80,11 @@ export class Hud {
         const onOverlayClick = e => {
             const code = e.target.closest('[data-language]')?.dataset.language
             if (code) setLanguage(code)
+            if (e.target.closest('[data-continue]')) game.continueGame()
         }
         $('overlay').addEventListener('click', onOverlayClick)
+        $('credits').addEventListener('pointerdown', e => e.stopPropagation())
+        $('credits').addEventListener('click', () => $('creditsBanner').hidden = !$('creditsBanner').hidden)
     }
 
     icon(item) {

@@ -31,7 +31,10 @@
     #quests { position: absolute; left: 8px; top: 20px; font-size: 8px; color: #ffe9a8; }
     #quests p { margin: 0 0 2px; }
     #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
-    #version { position: absolute; right: 8px; bottom: 8px; font-size: 8px; color: #fff8; }
+    #version { position: absolute; right: 24px; bottom: 8px; font-size: 8px; color: #fff8; }
+    #credits { position: absolute; right: 8px; bottom: 6px; width: 12px; height: 12px; line-height: 12px; text-align: center; font-size: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
+    #creditsBanner { position: absolute; right: 8px; top: 22px; max-width: 200px; padding: 4px 6px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; text-align: right; user-select: text; -webkit-user-select: text; }
+    #creditsBanner a { color: inherit; }
     .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
     .popup b { font-size: 16px; }
 
@@ -75,6 +78,10 @@
     #panel .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
     .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); image-rendering: pixelated; }
 
+    #stage.photo #counter, #stage.photo #quests, #stage.photo #fps, #stage.photo #version,
+    #stage.photo #hud, #stage.photo #touch, #stage.photo #boss, #stage.photo #popups,
+    #stage.photo #credits, #stage.photo #creditsBanner { display: none; }
+
     #touch, #rotate { display: none; }
     #touch div { position: absolute; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 8px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
     #touch div:active { background: #6b3d22; }
@@ -97,6 +104,8 @@
     <div id="quests"></div>
     <div id="fps"></div>
     <div id="version"></div>
+    <div id="credits">i</div>
+    <div id="creditsBanner" hidden>Created by Mateusz Patyk (<a href="mailto:matpatyk@gmail.com">matpatyk@gmail.com</a>)</div>
     <div id="popups"></div>
     <div id="boss" hidden><span id="bossName"></span><div class="bar"><i id="bossHp"></i></div></div>
     <div id="hud">
