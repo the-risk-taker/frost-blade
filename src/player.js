@@ -4,6 +4,7 @@ import { sfx } from './sound.js'
 import { TYPES, hurtEnemy } from './enemies.js'
 import { stat } from './items.js'
 import { onIce } from './levels.js'
+import { t } from './lang.js'
 
 export const SLOTS = ['sword', 'bow', 'frost', 'potion']
 // Mana skills have their own keys, touch screens have buttons for them
@@ -23,12 +24,30 @@ const USE_KEYS = ['Space', 'KeyJ', 'Mouse0']
 export function createPlayer() {
     return {
         x: 80, y: GROUND, vx: 0, vy: 0, dir: 1, onGround: true, walk: 0,
-        hp: 100, mana: 100, stamina: 100, restT: 0,
+        hp: 100, maxHp: 100, mana: 100, maxMana: 100, stamina: 100, restT: 0,
+        xp: 0, level: 1, power: 0,
         slot: 0, cooldown: 0,
         bag: { gold: 10, arrows: 10, potion: 3 },
         gear: { head: null, body: null, back: null },
         attackT: -1, chill: false, hitSet: new Set(), rollT: -1, hurtT: 0, drawT: -1, shieldT: 0,
     }
+}
+
+// Kills grant XP. Filling the bar levels the hero up: more health, mana and striking power.
+const XP_PER_LEVEL = 50
+
+export function addXp(p, amount, game) {
+    p.xp += amount
+    if (p.xp < p.level * XP_PER_LEVEL) return
+    p.xp -= p.level * XP_PER_LEVEL
+    p.level++
+    p.maxHp += 20
+    p.maxMana += 10
+    p.power += 2
+    p.hp = p.maxHp
+    p.mana = p.maxMana
+    game.popup(p.x, p.y - 60, t('levelUp', { level: p.level }), '#ffe9a8')
+    sfx.coin()
 }
 
 export function canUse(p, item) {
@@ -39,7 +58,7 @@ export function canUse(p, item) {
 export function aimArrow(p) {
     const charge = Math.min(1, p.drawT / BOW_CHARGE)
     const speed = 180 + 340 * charge
-    return { x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * speed, vy: -speed * 0.3, damage: Math.round(8 + 16 * charge) }
+    return { x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * speed, vy: -speed * 0.3, damage: Math.round(8 + 16 * charge) + p.power }
 }
 
 export function flyArrow(a, dt) {
@@ -97,7 +116,7 @@ function useItem(p, item, game) {
     } else if (item === 'frost') {
         p.mana -= 25
         p.cooldown = 0.35
-        game.bolts.push({ x: p.x + p.dir * 14, y: p.y - 22, vx: p.dir * 340, life: 1.2 })
+        game.bolts.push({ x: p.x + p.dir * 14, y: p.y - 22, vx: p.dir * 340, life: 1.2, damage: 18 + p.power })
         sfx.cast()
     } else if (item === 'shield') {
         p.mana -= 40
@@ -107,7 +126,7 @@ function useItem(p, item, game) {
         sfx.shield()
     } else if (item === 'potion') {
         p.bag.potion--
-        p.hp = Math.min(100, p.hp + 40)
+        p.hp = Math.min(p.maxHp, p.hp + 40)
         p.cooldown = 0.5
         game.burst(p.x, p.y - 18, '#ff6b6b', 16, 60)
         game.flash(p.x, p.y - 18, '#ff6b6b', 56)
@@ -121,7 +140,7 @@ export function updatePlayer(p, dt, game) {
     p.restT -= dt
     p.shieldT -= dt
     if (p.restT <= 0) p.stamina = Math.min(100, p.stamina + (30 + stat(p, 'staminaRegen')) * dt)
-    p.mana = Math.min(100, p.mana + (6 + stat(p, 'manaRegen')) * dt)
+    p.mana = Math.min(p.maxMana, p.mana + (6 + stat(p, 'manaRegen')) * dt)
 
     for (let i = 0; i < 9; i++) if (input.hit('Digit' + (i + 1))) p.slot = i
     p.slot = (((p.slot + input.takeWheel()) % 9) + 9) % 9
@@ -165,7 +184,7 @@ export function updatePlayer(p, dt, game) {
             for (const e of game.enemies) {
                 if (e.hp <= 0 || p.hitSet.has(e) || Math.abs(e.x - reach) > 30 || p.y < e.y - TYPES[e.type].height) continue
                 p.hitSet.add(e)
-                hurtEnemy(e, 14, p.dir, game, 0, p.chill ? 1.6 : 0)
+                hurtEnemy(e, 14 + p.power, p.dir, game, 0, p.chill ? 1.6 : 0)
             }
         }
         if (p.attackT > ATTACK_TIME) p.attackT = -1

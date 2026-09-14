@@ -1,4 +1,4 @@
-import { H, view } from './const.js'
+import { view } from './const.js'
 import { Game } from './game.js'
 import { Renderer } from './render.js'
 import { Hud } from './hud.js'

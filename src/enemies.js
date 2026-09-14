@@ -1,6 +1,6 @@
 import { GROUND, LEVEL_W } from './const.js'
 import { sfx } from './sound.js'
-import { hurtPlayer } from './player.js'
+import { hurtPlayer, addXp } from './player.js'
 import { onIce } from './levels.js'
 
 const GRAVITY = 960
@@ -130,6 +130,7 @@ export function hurtEnemy(e, damage, dir, game, slow = 0, freeze = 0) {
     game.shake = 6
     game.burst(e.x, e.y - type.height / 2, type.blood, 30, 160)
     sfx.smash()
+    if (!type.prop) addXp(game.player, Math.round(type.hp / 2), game)
     for (const [item, chance, count] of LOOT[e.type]) if (Math.random() < chance) game.drop(e.x, e.y - type.height / 2, item, count)
 }
 

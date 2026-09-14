@@ -3,6 +3,7 @@ let ac
 export function unlockAudio() {
     ac ??= new AudioContext()
     if (ac.state === 'suspended') ac.resume()
+    startMusic()
 }
 
 function envelope(volume, duration) {
@@ -36,6 +37,24 @@ function noise(duration, volume, frequency) {
     filter.frequency.value = frequency
     src.connect(filter).connect(envelope(volume, duration))
     src.start()
+}
+
+// Generative ambient pad: soft random chords from an icy scale, fading in and out forever
+const MUSIC_SCALE = [174.61, 196.00, 220.00, 261.63, 293.66, 329.63]
+let musicOn = false
+
+function ambientNote() {
+    if (!musicOn) return
+    const freq = MUSIC_SCALE[Math.floor(Math.random() * MUSIC_SCALE.length)]
+    tone(freq, freq, 4, 'sine', 0.14)
+    tone(freq * 1.5, freq * 1.5, 4, 'sine', 0.08)
+    setTimeout(ambientNote, 1200 + Math.random() * 900)
+}
+
+function startMusic() {
+    if (musicOn) return
+    musicOn = true
+    ambientNote()
 }
 
 export const sfx = {

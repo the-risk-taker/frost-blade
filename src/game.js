@@ -24,7 +24,11 @@ export class Game {
     startLevel(index, hero = createPlayer()) {
         this.level = index
         this.stage = LEVELS[index]
-        this.player = { ...createPlayer(), bag: structuredClone(hero.bag), gear: { ...hero.gear } }
+        this.player = {
+            ...createPlayer(), bag: structuredClone(hero.bag), gear: { ...hero.gear },
+            xp: hero.xp, level: hero.level, power: hero.power,
+            maxHp: hero.maxHp, maxMana: hero.maxMana, hp: hero.maxHp, mana: hero.maxMana,
+        }
         this.saved = structuredClone(this.player)
         this.quests = this.stage.quests.map(quest => ({ ...quest, state: 'new' }))
         this.kills = {}
@@ -141,7 +145,7 @@ export class Game {
             this.particles.push({ x: b.x, y: b.y + (Math.random() - 0.5) * 4, vx: -b.vx * 0.1, vy: 0, life: 0.25, color: '#9fe6ff', size: 1, gravity: 0 })
             const target = this.enemies.find(e => e.hp > 0 && Math.abs(e.x - b.x) < 16 && b.y > e.y - TYPES[e.type].height - 4)
             if (target) {
-                hurtEnemy(target, 18, Math.sign(b.vx), this, 2.5)
+                hurtEnemy(target, b.damage, Math.sign(b.vx), this, 2.5)
                 this.burst(b.x, b.y, '#bff0ff', 14)
                 this.flash(b.x, b.y, '#8fdcff', 48)
                 b.life = 0

@@ -20,14 +20,17 @@ const questName = quest => quest.item
     : t('questKill', { enemy: t(`enemy.${quest.kill}`), count: quest.count })
 
 function overlayLines(game) {
-    if (game.state === 'travel') return [t(`stage.${LEVELS[game.level + 1].theme}`), t('loading')]
+    if (game.state === 'travel') {
+        const stage = LEVELS[game.level + 1]
+        return [t(`stage.${stage.theme}`), t(`story.${stage.theme}`), t('loading')]
+    }
     const start = touch ? t('tap') : 'ENTER'
     const retry = touch ? t('tap') : 'R'
     const controls = touch ? [t('hintTouch')] : [t('keysMove'), t('keysUse'), t('keysSkills'), t('keysMenu')]
     // An empty data-key keeps a tap on a language from also starting the game
     const languages = LANGUAGES.map(code => `<span data-language="${code}" data-key="" ${code === language() ? 'data-active' : ''}>${languageName(code)}</span>`).join(' ')
     return {
-        title: [t('title'), ...controls, t('goal'), t('start', { key: start }), `${t('language')}: ${languages}`],
+        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), `${t('language')}: ${languages}`],
         dead: [t('dead'), t('retry', { key: retry })],
         win: [t('win'), t('winText'), t('again', { key: retry })],
     }[game.state]
@@ -121,8 +124,8 @@ export class Hud {
 
     update(game, fps) {
         const p = game.player
-        $('mana').style.width = `${p.mana}%`
-        $('hp').style.width = `${Math.max(0, p.hp)}%`
+        $('mana').style.width = `${100 * p.mana / p.maxMana}%`
+        $('hp').style.width = `${Math.max(0, 100 * p.hp / p.maxHp)}%`
         $('stamina').style.width = `${p.stamina}%`
         this.slots.forEach((slot, i) => {
             const item = SLOTS[i]
@@ -135,7 +138,7 @@ export class Hud {
         const foes = game.enemies.filter(e => !TYPES[e.type].prop)
         const exit = game.cleared() && game.level < LEVELS.length - 1
         const goal = exit ? t('cleared') : t('foes', { killed: foes.filter(e => e.hp <= 0).length, total: foes.length })
-        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('gold', { gold: p.bag.gold })].join(' | ')
+        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('level', { level: p.level }), t('gold', { gold: p.bag.gold })].join(' | ')
         $('quests').innerHTML = game.quests.filter(quest => quest.state === 'taken').map(quest => `<p>${questName(quest)} ${progress(game, quest)}/${quest.count}</p>`).join('')
         $('fps').textContent = `${fps} FPS`
         const boss = game.state === 'play' && game.enemies.find(e => TYPES[e.type].boss && e.hp > 0 && Math.abs(e.x - p.x) < TYPES[e.type].engage)
