@@ -1,16 +1,19 @@
 import * as THREE from 'three'
 import { GROUND, H, LEVEL_W, view } from './const.js'
 import { buildWorld, buildVignette } from './art.js'
-import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildBolt, buildArrow, buildIcicle, buildItems, buildGlow } from './sprites.js'
+import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildBolt, buildArrow, buildIcicle, buildItems, buildStatuses, buildGlow } from './sprites.js'
 import { SLOTS, ATTACK_TIME, ROLL_TIME, BOW_CHARGE, aimArrow, flyArrow } from './player.js'
 import { TYPES } from './enemies.js'
+import { has } from './status.js'
+import { hitboxes } from './dev.js'
 
 // Canvas colors are used as-is, without sRGB conversions.
 THREE.ColorManagement.enabled = false
 
 const PARALLAX = [['sky', 0, 0], ['clouds', 0.04, 4], ['far', 0.1, 0], ['near', 0.22, 0], ['cliffs', 0.4, 0], ['forest', 0.62, 0]]
 const MARGIN = 8
-const ORDER = { level: 10, snowBack: 15, npc: 18, enemy: 20, hero: 21, pickup: 22, projectile: 23, glow: 24, particles: 25, bars: 26, snowFront: 27, vignette: 30 }
+const ORDER = { level: 10, snowBack: 15, npc: 18, enemy: 20, hero: 21, pickup: 22, projectile: 23, glow: 24, particles: 25, bars: 26, snowFront: 27, boxes: 29, vignette: 30 }
+const BOXES = 100
 
 const SPRITE_VERTEX = `
   uniform vec4 frame;
@@ -76,6 +79,7 @@ const cycle = (list, phase) => list[Math.floor(phase / (Math.PI * 2) * list.leng
 
 function heroFrame(p, frames, time) {
     if (p.rollT >= 0) return pick(frames.roll, p.rollT / ROLL_TIME)
+    if (p.whirlT >= 0) return pick(frames.attack, (p.whirlT * 4) % 1)
     if (p.attackT >= 0) return pick(frames.attack, p.attackT / ATTACK_TIME)
     if (p.drawT >= 0) return pick(frames.aim, p.drawT / BOW_CHARGE)
     if (!p.onGround) return frames.jump[p.vy < 0 ? 0 : 1]
@@ -178,8 +182,14 @@ export class Renderer {
             ogre: load(buildOgre(false)), chief: load(buildOgre(true)), wolf: load(buildWolf(false)), alpha: load(buildWolf(true)),
             archer: load(buildGoblin()), shaman: load(buildShaman()), chest: load(buildChest()),
             merchant: load(buildMerchant()), board: load(buildBoard()),
-            bolt: load(buildBolt()), arrow: load(buildArrow()), icicle: load(buildIcicle()), items: load(buildItems()),
+            bolt: load(buildBolt()), arrow: load(buildArrow()), icicle: load(buildIcicle()), items: load(buildItems()), statuses: load(buildStatuses()),
         }
+        this.marks = []
+        // Dev outlines of bodies and hit zones, 8 line ends per box
+        const ends = new THREE.BufferAttribute(new Float32Array(BOXES * 8 * 3), 3)
+        this.boxes = this.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', ends), new THREE.LineBasicMaterial({ color: '#ff3cf0', transparent: true, depthTest: false })))
+        this.boxes.renderOrder = ORDER.boxes
+        this.boxes.frustumCulled = false
         // One hero sheet per worn gear combination, baked when first needed
         this.heroSheets = {}
         this.glowMap = texture(buildGlow())
@@ -251,14 +261,16 @@ export class Renderer {
         this.vignette.position.set(cam, view.h - H, 0)
 
         const blink = p.hurtT > 0 && Math.floor(game.time * 20) % 2
-        const item = SLOTS[p.slot] ?? 'sword'
+        const whirl = p.whirlT >= 0
+        const item = whirl ? 'sword' : SLOTS[p.slot] ?? 'sword'
         const heroKey = Object.values(p.gear).join() + item
         const heroSheet = this.heroSheets[heroKey] ??= load(buildHero(p.gear, item))
         this.hero ??= new Sprite(this.scene, heroSheet, ORDER.hero)
         this.hero.use(heroSheet)
-        this.hero.show(p.x, p.y, p.dir, heroFrame(p, heroSheet.frames, game.time))
+        // The whirl spins by turning the hero around quickly
+        this.hero.show(p.x, p.y, whirl && Math.floor(p.whirlT * 12) % 2 ? -p.dir : p.dir, heroFrame(p, heroSheet.frames, game.time))
         this.hero.mesh.visible = game.state !== 'dead' && !blink
-        this.hero.uniforms.flash.value.set(1, 1, 1, p.hurtT > 0.65 ? 0.8 : 0)
+        this.hero.uniforms.flash.value.set(...(p.hurtT > 0.65 ? [1, 1, 1, 0.8] : has(p, 'freeze') ? [0.75, 0.93, 1, 0.7] : [0, 0, 0, 0]))
 
         const { board, merchant } = this.sheets
         const npcs = [[board, game.stage.board], ...game.stage.merchants.map(x => [merchant, x])]
@@ -272,6 +284,8 @@ export class Renderer {
         game.enemies.forEach((e, i) => this.renderEnemy(e, i))
         // Parts left over from a stage with more enemies
         for (const { sprite, back, fill } of this.enemies.slice(game.enemies.length)) sprite.mesh.visible = back.visible = fill.visible = false
+        this.renderStatuses(game)
+        this.renderBoxes(game)
         this.renderProjectiles(game.bolts, this.bolts, this.sheets.bolt)
         this.renderProjectiles(game.arrows, this.arrows, this.sheets.arrow)
         this.renderProjectiles(game.shots, this.shots, this.sheets.arrow)
@@ -346,7 +360,7 @@ export class Renderer {
         }
         const alive = e.hp > 0
         const telegraph = e.state === 'windup' && e.t < 0.15
-        const flash = e.flashT > 0 ? [1, 1, 1, 1] : e.frozenT > 0 ? [0.75, 0.93, 1, 0.7] : telegraph ? [1, 0.25, 0.15, 0.55] : e.slowT > 0 ? [0.6, 0.85, 1, 0.4] : [0, 0, 0, 0]
+        const flash = e.flashT > 0 ? [1, 1, 1, 1] : has(e, 'freeze') ? [0.75, 0.93, 1, 0.7] : telegraph ? [1, 0.25, 0.15, 0.55] : has(e, 'slow') ? [0.6, 0.85, 1, 0.4] : [0, 0, 0, 0]
         sprite.use(this.sheets[e.type])
         sprite.show(e.x, e.y, e.dir, enemyFrame(e, sprite.sheet.frames))
         sprite.mesh.visible = e.deadT < 0.8
@@ -360,6 +374,31 @@ export class Renderer {
         back.scale.set(26, 5, 1)
         fill.position.set(Math.round(e.x) - 12, -Math.round(top) - 1, 0)
         fill.scale.set(Math.max(1, Math.round(24 * e.hp / e.maxHp)), 3, 1)
+    }
+
+    // Marks of timed effects over the hero and living foes
+    renderStatuses(game) {
+        const p = game.player
+        const { statuses } = this.sheets
+        const marks = [p, ...game.enemies.filter(e => e.hp > 0)].flatMap(target => {
+            const names = Object.keys(target.statuses)
+            const top = target === p ? p.y - 42 : target.y - TYPES[target.type].height - 11
+            return names.map((name, i) => ({ x: target.x + (i - (names.length - 1) / 2) * 9, y: top, name }))
+        })
+        marks.forEach((mark, i) => {
+            this.marks[i] ??= new Sprite(this.scene, statuses, ORDER.bars + 1)
+            this.marks[i].show(mark.x, mark.y, 1, statuses.frames[mark.name][0])
+        })
+        hideFrom(this.marks, marks.length)
+    }
+
+    renderBoxes(game) {
+        const boxes = game.dev?.boxes ? hitboxes(game).slice(0, BOXES) : []
+        const { position } = this.boxes.geometry.attributes
+        boxes.forEach(([x, y, w, h], i) => [[x, y], [x + w, y], [x + w, y], [x + w, y + h], [x + w, y + h], [x, y + h], [x, y + h], [x, y]]
+            .forEach(([px, py], j) => position.setXYZ(i * 8 + j, Math.round(px) + 0.5, -Math.round(py) - 0.5, 0)))
+        position.needsUpdate = true
+        this.boxes.geometry.setDrawRange(0, boxes.length * 8)
     }
 
     renderProjectiles(list, pool, sheet) {

@@ -1,11 +1,13 @@
 import { GROUND, H, LEVEL_W, view } from './const.js'
-import { SLOTS, SKILLS, canUse } from './player.js'
+import { SLOTS, SKILLS, SKILL_KEY, COOLDOWNS, canUse } from './player.js'
 import { TYPES } from './enemies.js'
-import { ITEMS, OFFERS, canBuy, buy, sell, equip, stat } from './items.js'
+import { ITEMS, OFFERS, canBuy, buy, sell, equip } from './items.js'
+import { TALENTS, stat, points, pickTalent, resetCost, canReset, resetTalents } from './talents.js'
 import { LEVELS } from './levels.js'
 import { progress, takeQuest } from './quests.js'
 import { LANGUAGES, language, languageName, setLanguage, t } from './lang.js'
 import { buildIcons, buildItems } from './sprites.js'
+import { devPanel, devClick } from './dev.js'
 import { version } from '../package.json'
 
 const touch = matchMedia('(pointer: coarse)').matches
@@ -43,7 +45,7 @@ function overlayLines(game) {
 export class Hud {
     constructor(game) {
         $('version').textContent = `v${version}`
-        const icons = buildIcons()
+        const icons = this.icons = buildIcons()
         const addSlot = (key, item) => {
             const slot = document.createElement('div')
             slot.className = 'slot'
@@ -58,22 +60,26 @@ export class Hud {
             return slot
         })
         // Skill slots show their key. Touch buttons with the same key are greyed out along with them.
-        this.skills = Object.entries(SKILLS).map(([key, item]) => {
+        // The last one holds the skill picked in the talent tree.
+        this.skills = Object.entries({ ...SKILLS, [SKILL_KEY]: null }).map(([key, item]) => {
             const slot = addSlot(key, item)
             slot.classList.add('skill')
             slot.append(Object.assign(document.createElement('b'), { textContent: key.slice(3) }))
-            return { item, elements: document.querySelectorAll(`[data-key="${key}"]`) }
+            return { item, slot, elements: document.querySelectorAll(`[data-key="${key}"]`) }
         })
 
         this.items = buildItems()
         $('panel').style.setProperty('--items', `url(${this.items.canvas.toDataURL()})`)
         const onPanelClick = e => {
             const p = game.player
-            const { offer, sale, gear, quest, close } = e.target.closest('[data-offer], [data-sale], [data-gear], [data-quest], [data-close]')?.dataset ?? {}
+            const { offer, sale, gear, quest, talent, node, reset, close } = e.target.closest('[data-offer], [data-sale], [data-gear], [data-quest], [data-talent], [data-reset], [data-close]')?.dataset ?? {}
             if (offer) buy(p, OFFERS[offer])
             if (sale) sell(p, sale)
             if (gear) equip(p, gear)
             if (quest) takeQuest(game, game.quests[quest])
+            if (talent) pickTalent(p, talent, Number(node))
+            if (reset) resetTalents(p)
+            if (game.panel === 'dev') devClick(game, e.target)
             if (close) game.panel = null
         }
         $('panel').addEventListener('click', onPanelClick)
@@ -117,7 +123,8 @@ export class Hud {
         })
         const sales = Object.keys(ITEMS).filter(item => ITEMS[item].value && p.bag[item])
             .map(item => this.row(item, `${t(`item.${item}`)} x${p.bag[item]}`, `+${this.cost({ gold: ITEMS[item].value })}`, `data-sale="${item}"`))
-        return `<h2>${t('merchant')}</h2><h3>${t('buy')} <em>${this.cost({ gold: p.bag.gold })}</em></h3>${offers.join('')}<h3>${t('sell')}</h3>${sales.join('') || `<p>${t('nothingToSell')}</p>`}`
+        const reset = `<div class="row" data-reset="1" ${canReset(p) ? '' : 'data-off'}><span>${t('resetTalents')}</span><em>${this.cost({ gold: resetCost(p) })}</em></div>`
+        return `<h2>${t('merchant')}</h2><h3>${t('buy')} <em>${this.cost({ gold: p.bag.gold })}</em></h3>${offers.join('')}<h3>${t('sell')}</h3>${sales.join('') || `<p>${t('nothingToSell')}</p>`}<h3>${t('talents')}</h3>${reset}`
     }
 
     // New quests show their reward, taken ones their progress
@@ -129,7 +136,23 @@ export class Hud {
         return `<h2>${t('quests')}</h2>${rows.join('')}<p>${t('questHint')}</p>`
     }
 
-    update(game, fps) {
+    // Learned nodes are marked with the active skill highlighted, nodes out of reach are dimmed
+    talentPanel(p) {
+        const branches = Object.entries(TALENTS).map(([branch, nodes]) => {
+            const cells = nodes.map(({ skill }, i) => {
+                const state = i < p.talents[branch] ? `data-learned ${skill && skill === p.skill ? 'data-active' : ''}` : i > p.talents[branch] || !points(p) ? 'data-off' : ''
+                return `<div class="talent" data-talent="${branch}" data-node="${i}" ${state}>${t(`talent.${branch}${i}`)}</div>`
+            })
+            return `<div><h3>${t(`branch.${branch}`)}</h3>${cells.join('')}</div>`
+        })
+        return `<h2>${t('talents')}<em>${t('points', { points: points(p) })}</em></h2><div class="tree">${branches.join('')}</div><p>${t('talentHint')}</p>`
+    }
+
+    pausePanel() {
+        return `<h2>${t('paused')}</h2><p>${touch ? t('tap') : 'ESC'} - ${t('resume')}</p>`
+    }
+
+    update(game, fps, drawCalls) {
         const p = game.player
         $('mana').style.width = `${100 * p.mana / p.maxMana}%`
         $('hp').style.width = `${Math.max(0, 100 * p.hp / p.maxHp)}%`
@@ -140,14 +163,27 @@ export class Hud {
             slot.classList.toggle('disabled', Boolean(item) && !canUse(p, item))
             if (COUNTED[item]) slot.querySelector('b').textContent = p.bag[COUNTED[item]]
         })
-        for (const { item, elements } of this.skills) for (const element of elements) element.classList.toggle('disabled', !canUse(p, item))
+        for (const { item, elements } of this.skills) for (const element of elements) element.classList.toggle('disabled', !canUse(p, item ?? p.skill))
+        // The talent tree skill swaps its icon and touch label when picked, a dark cover shrinks while it cools down
+        const { slot, elements } = this.skills.at(-1)
+        if (this.skill !== p.skill + language()) {
+            this.skill = p.skill + language()
+            slot.querySelector('canvas')?.remove()
+            if (p.skill) slot.prepend(this.icons[p.skill])
+            $('skill').textContent = p.skill ? t(`skill.${p.skill}`) : ''
+        }
+        for (const element of elements) {
+            element.hidden = !p.skill
+            element.style.setProperty('--cooldown', `${p.skill ? 100 * Math.max(0, p.skillT) / COOLDOWNS[p.skill] : 0}%`)
+        }
 
-        const foes = game.enemies.filter(e => !TYPES[e.type].prop)
+        const foes = game.foes()
         const exit = game.cleared() && game.level < LEVELS.length - 1
         const goal = exit ? t('cleared') : t('foes', { killed: foes.filter(e => e.hp <= 0).length, total: foes.length })
-        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('level', { level: p.level }), t('gold', { gold: p.bag.gold })].join(' | ')
+        const talentPoints = points(p) > 0 ? [t('talentPoints', { points: points(p) })] : []
+        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('level', { level: p.level }), ...talentPoints, t('gold', { gold: p.bag.gold })].join(' | ')
         $('quests').innerHTML = game.quests.filter(quest => quest.state === 'taken').map(quest => `<p>${questName(quest)} ${progress(game, quest)}/${quest.count}</p>`).join('')
-        $('fps').textContent = `${fps} FPS`
+        $('fps').textContent = game.dev ? `${fps} FPS ${drawCalls} DC` : `${fps} FPS`
         const boss = game.state === 'play' && game.enemies.find(e => TYPES[e.type].boss && e.hp > 0 && Math.abs(e.x - p.x) < TYPES[e.type].engage)
         $('boss').hidden = !boss
         if (boss) {
@@ -168,7 +204,8 @@ export class Hud {
         $('trade').hidden = !near
         if (near) $('trade').textContent = t(near.panel === 'shop' ? 'btnShop' : 'btnQuests')
 
-        const panel = game.panel === 'bag' ? this.bagPanel(p) : game.panel === 'shop' ? this.shopPanel(p) : game.panel === 'quests' ? this.questPanel(game) : ''
+        const panels = { bag: () => this.bagPanel(p), shop: () => this.shopPanel(p), quests: () => this.questPanel(game), talents: () => this.talentPanel(p), dev: () => devPanel(game), pause: () => this.pausePanel() }
+        const panel = panels[game.panel]?.() ?? ''
         if (panel !== this.panel) {
             this.panel = panel
             $('panel').hidden = !panel

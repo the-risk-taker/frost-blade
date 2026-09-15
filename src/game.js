@@ -3,11 +3,14 @@ import { input } from './input.js'
 import { sfx } from './sound.js'
 import { give } from './items.js'
 import { t } from './lang.js'
+import { rng } from './pixels.js'
 import { LEVELS } from './levels.js'
 import { updateQuests } from './quests.js'
-import { createPlayer, updatePlayer, hurtPlayer, flyArrow } from './player.js'
-import { TYPES, createEnemy, updateEnemy, hurtEnemy } from './enemies.js'
-import { loadProgress, saveProgress, clearProgress } from './save.js'
+import { stat, updateStats } from './talents.js'
+import { afflict } from './status.js'
+import { createPlayer, updatePlayer, hurtPlayer, flyArrow, strike, carried } from './player.js'
+import { TYPES, createEnemy, updateEnemy, hurtEnemy, rollGroup } from './enemies.js'
+import { loadProgress, saveProgress } from './save.js'
 
 function age(list, dt) {
     for (const item of list) item.life -= dt
@@ -20,39 +23,47 @@ export class Game {
         this.playTime = 0
         this.totalKills = 0
         this.hints = new Set()
+        // Seeds everything random in the run, every stage draws from its own sequence
+        this.seed = Date.now()
+        // Dev panel switches, created when the panel is first opened
+        this.dev = null
         this.progress = loadProgress()
         this.startLevel(0)
         this.state = 'title'
     }
 
-    // Resumes a saved checkpoint: stage plus the hero's level/xp/bag/gear
+    // Resumes a saved checkpoint: the stage plus everything the hero carries
     continueGame() {
         if (!this.progress) return
-        const { stage, bag, gear, ...growth } = this.progress
-        const hero = { ...createPlayer(), ...growth, bag: { ...createPlayer().bag, ...bag }, gear: { ...createPlayer().gear, ...gear } }
+        const { stage, ...hero } = this.progress
         this.startLevel(stage, hero)
     }
 
-    // The hero carries his bag and gear to the next stage. A retry brings them back as they were when the stage began.
+    // The hero carries his bag, gear and talents to the next stage. A retry brings them back as they were when the stage began.
     startLevel(index, hero = createPlayer()) {
         this.level = index
         this.stage = LEVELS[index]
-        this.player = {
-            ...createPlayer(), bag: structuredClone(hero.bag), gear: { ...hero.gear },
-            xp: hero.xp, level: hero.level, power: hero.power,
-            maxHp: hero.maxHp, maxMana: hero.maxMana, hp: hero.maxHp, mana: hero.maxMana,
-        }
-        this.saved = structuredClone(this.player)
+        this.random = rng(this.seed + index)
+        const p = this.player = Object.assign(createPlayer(), carried(hero))
+        updateStats(p)
+        p.hp = p.maxHp
+        p.mana = p.maxMana
+        this.saved = structuredClone(p)
         this.quests = this.stage.quests.map(quest => ({ ...quest, state: 'new' }))
         this.kills = {}
         this.state = 'play'
         this.panel = null
-        this.enemies = this.stage.enemies.map(([type, x]) => createEnemy(type, x))
+        this.enemies = this.stage.enemies.flatMap(([type, x, budget]) => type === 'pool'
+            ? rollGroup(this.stage.pool, budget, this.random).map((pick, i) => createEnemy(pick, x + i * 50, this.stage))
+            : [createEnemy(type, x, this.stage)])
+        this.roamers = 0
+        this.roamT = 30
         this.traps = this.stage.traps.map(x => ({ x, y: 36, t: -1 }))
         this.bolts = []
         this.arrows = []
         this.shots = []
         this.icicles = []
+        this.trails = []
         this.pickups = []
         this.particles = []
         this.popups = []
@@ -64,8 +75,8 @@ export class Game {
 
     burst(x, y, color, count, speed = 120, size = 2) {
         for (let i = 0; i < count; i++) {
-            const a = Math.random() * Math.PI * 2, s = Math.random() * speed
-            this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.3 + Math.random() * 0.4, color, size, gravity: 400 })
+            const a = this.random() * Math.PI * 2, s = this.random() * speed
+            this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, life: 0.3 + this.random() * 0.4, color, size, gravity: 400 })
         }
     }
 
@@ -78,7 +89,7 @@ export class Game {
     }
 
     drop(x, y, item, count) {
-        this.pickups.push({ item, count, x, y, vx: (Math.random() - 0.5) * 140, vy: -150 - Math.random() * 100, t: 0 })
+        this.pickups.push({ item, count, x, y, vx: (this.random() - 0.5) * 140, vy: -150 - this.random() * 100, t: 0 })
     }
 
     hitstop(time) {
@@ -98,9 +109,13 @@ export class Game {
         return merchant && { x: merchant, panel: 'shop' }
     }
 
-    // All foes are down, chests don't count
+    // Foes that must fall to clear the stage: no chests and no wandering groups
+    foes() {
+        return this.enemies.filter(e => !TYPES[e.type].prop && !e.roaming)
+    }
+
     cleared() {
-        return this.enemies.every(e => e.hp <= 0 || TYPES[e.type].prop)
+        return this.foes().every(e => e.hp <= 0)
     }
 
     update(dt) {
@@ -112,8 +127,13 @@ export class Game {
         if (this.state !== 'play' && input.hit('Enter', 'KeyR')) return this.state === 'dead' ? this.startLevel(this.level, this.saved) : this.startLevel(0)
         if (this.state === 'play') {
             if (input.hit('KeyI')) this.toggle('bag')
+            if (input.hit('KeyT')) this.toggle('talents')
             if (input.hit('KeyE') && (this.panel || this.nearby())) this.panel = this.panel ? null : this.nearby().panel
-            if (input.hit('Escape')) this.panel = null
+            if (input.hit('Backquote')) {
+                this.dev ??= { god: false, boxes: false }
+                this.toggle('dev')
+            }
+            if (input.hit('Escape')) this.panel = this.panel ? null : 'pause'
         }
         if (this.panel) return
         if (this.freeze > 0) {
@@ -126,6 +146,7 @@ export class Game {
         if (this.state === 'play') {
             updatePlayer(p, dt, this)
             updateQuests(this)
+            this.updateRoamers(dt)
         }
         for (const e of this.enemies) updateEnemy(e, dt, this)
         this.updateBolts(dt)
@@ -133,6 +154,7 @@ export class Game {
         this.updateShots(dt)
         this.updateTraps(dt)
         this.updateIcicles(dt)
+        this.updateTrails(dt)
         this.updatePickups(dt)
         for (const q of this.particles) {
             q.vy += q.gravity * dt
@@ -147,7 +169,7 @@ export class Game {
             // The last stage ends with its last foe, the others with a walk to the right edge
             if (this.level === LEVELS.length - 1) {
                 this.state = 'win'
-                clearProgress()
+                saveProgress(this, this.level)
             } else if (p.x > LEVEL_W - 40) {
                 this.state = 'travel'
                 saveProgress(this, this.level + 1)
@@ -158,14 +180,26 @@ export class Game {
         this.camX = Math.max(0, Math.min(LEVEL_W - view.w, this.camX + (target - this.camX) * Math.min(1, dt * 4)))
     }
 
+    // Wandering groups come in from a screen edge now and then, up to a limit per stage
+    updateRoamers(dt) {
+        const { count, budget } = this.stage.roamers
+        this.roamT -= dt
+        if (this.roamT > 0 || this.roamers >= count) return
+        this.roamT = 30 + this.random() * 20
+        this.roamers++
+        const side = this.camX < 40 ? 1 : this.camX + view.w > LEVEL_W - 40 ? -1 : this.random() < 0.5 ? -1 : 1
+        const x = side > 0 ? this.camX + view.w + 20 : this.camX - 20
+        rollGroup(this.stage.pool, budget, this.random).forEach((type, i) => this.enemies.push({ ...createEnemy(type, x + side * i * 40, this.stage), roaming: true }))
+    }
+
     updateBolts(dt) {
         for (const b of this.bolts) {
             b.x += b.vx * dt
             b.life -= dt
-            this.particles.push({ x: b.x, y: b.y + (Math.random() - 0.5) * 4, vx: -b.vx * 0.1, vy: 0, life: 0.25, color: '#9fe6ff', size: 1, gravity: 0 })
+            this.particles.push({ x: b.x, y: b.y + (this.random() - 0.5) * 4, vx: -b.vx * 0.1, vy: 0, life: 0.25, color: '#9fe6ff', size: 1, gravity: 0 })
             const target = this.enemies.find(e => e.hp > 0 && Math.abs(e.x - b.x) < 16 && b.y > e.y - TYPES[e.type].height - 4)
             if (target) {
-                hurtEnemy(target, b.damage, Math.sign(b.vx), this, 2.5)
+                strike(this.player, target, b.damage, Math.sign(b.vx), this, { slow: 2.5 })
                 this.burst(b.x, b.y, '#bff0ff', 14)
                 this.flash(b.x, b.y, '#8fdcff', 48)
                 b.life = 0
@@ -184,12 +218,15 @@ export class Game {
         this.arrows = age(this.arrows, dt)
     }
 
+    // Arrows that hit may come back to the quiver with the arrow recovery talent
     updateShots(dt) {
+        const p = this.player
         for (const s of this.shots) {
             flyArrow(s, dt)
             const target = this.enemies.find(e => e.hp > 0 && Math.abs(e.x - s.x) < 12 && s.y > e.y - TYPES[e.type].height && s.y < e.y + 2)
             if (target) {
-                hurtEnemy(target, s.damage, Math.sign(s.vx), this)
+                strike(p, target, s.damage, Math.sign(s.vx), this)
+                if (this.random() < stat(p, 'recover')) give(p, 'arrows', 1)
                 s.life = 0
             } else if (s.y >= GROUND) {
                 this.burst(s.x, GROUND, '#eef7fa', 5, 40)
@@ -213,21 +250,30 @@ export class Game {
         this.traps = this.traps.filter(trap => trap.t <= 0.4)
     }
 
-    // Icicles shatter on anyone below. Frost sparkles mark the ground where they will land.
+    // Icicles shatter on anyone below and chill the hero. Frost sparkles mark the ground where they will land.
     updateIcicles(dt) {
         const p = this.player
         for (const s of this.icicles) {
             s.vy += 700 * dt
             s.y += s.vy * dt
-            this.particles.push({ x: s.x + (Math.random() - 0.5) * 24, y: GROUND, vx: 0, vy: -30, life: 0.4, color: '#8fdcff', size: 1, gravity: 0 })
+            this.particles.push({ x: s.x + (this.random() - 0.5) * 24, y: GROUND, vx: 0, vy: -30, life: 0.4, color: '#8fdcff', size: 1, gravity: 0 })
             if (s.y < GROUND) continue
             s.life = 0
             this.burst(s.x, GROUND, '#bff0ff', 20, 140)
             sfx.shatter()
-            if (this.state === 'play' && Math.abs(p.x - s.x) < 16 && p.y > GROUND - 40) hurtPlayer(p, 16, Math.sign(p.x - s.x) || 1, this)
+            if (this.state === 'play' && Math.abs(p.x - s.x) < 16 && p.y > GROUND - 40) hurtPlayer(p, 16, Math.sign(p.x - s.x) || 1, this, { slow: 1.5 })
             for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - s.x) < 20) hurtEnemy(e, 30, Math.sign(e.x - s.x) || 1, this)
         }
         this.icicles = age(this.icicles, dt)
+    }
+
+    // Frost left behind by rolls slows foes walking over it
+    updateTrails(dt) {
+        for (const trail of this.trails) {
+            if (this.random() < dt * 20) this.particles.push({ x: trail.x + (this.random() - 0.5) * 8, y: GROUND, vx: 0, vy: -20, life: 0.4, color: '#8fdcff', size: 1, gravity: 0 })
+            for (const e of this.enemies) if (e.hp > 0 && Math.abs(e.x - trail.x) < 10) afflict(e, 'slow', 1)
+        }
+        this.trails = age(this.trails, dt)
     }
 
     // Loot falls to the ground, then flies to the hero when he walks close

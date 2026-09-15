@@ -24,8 +24,6 @@ export const OFFERS = [
   { item: 'cloak', count: 1, cost: { fur: 3 } },
 ]
 
-export const stat = (p, key) => Object.values(p.gear).reduce((sum, item) => sum + (ITEMS[item]?.[key] ?? 0), 0)
-
 export function give(p, item, count) {
   p.bag[item] = (p.bag[item] ?? 0) + count
 }

@@ -601,6 +601,44 @@ export function buildMerchant() {
     return sheet(40, 56, 18, 52, { idle: phases(4).map(t => p => merchant(p, { bob: t < 0.5 ? 0 : 1 })) })
 }
 
+// Small marks of timed effects shown over health bars
+const STATUS_ART = {
+    slow: ({ rect }) => {
+        rect(-2, -7, 5, 1, ICE[1])
+        rect(-1, -6, 3, 2, ICE[0])
+        rect(0, -4, 1, 1, ICE[1])
+        rect(-1, -3, 3, 1, ICE[0])
+        rect(-2, -2, 5, 1, ICE[1])
+    },
+    freeze: ({ rect }) => {
+        rect(-3, -4, 7, 1, ICE[2])
+        rect(0, -7, 1, 7, ICE[2])
+        for (const [x, y] of [[-2, -6], [2, -6], [-2, -2], [2, -2]]) rect(x, y, 1, 1, ICE[1])
+    },
+    bleed: ({ rect }) => {
+        rect(0, -7, 1, 1, '#e0321f')
+        rect(-1, -6, 3, 2, '#e0321f')
+        rect(-2, -4, 5, 2, '#c21a0e')
+        rect(-1, -2, 3, 1, '#8a1208')
+    },
+    burn: ({ rect }) => {
+        rect(-2, -4, 5, 3, '#f07a19')
+        rect(-1, -6, 3, 2, '#f0c419')
+        rect(0, -7, 1, 1, '#fff2a8')
+        rect(-1, -3, 2, 1, '#fff2a8')
+    },
+    root: ({ rect }) => {
+        rect(-3, -6, 7, 1, GOBLIN.bow[1])
+        rect(-3, -3, 7, 1, GOBLIN.bow[1])
+        rect(-2, -7, 1, 6, GOBLIN.shaft)
+        rect(1, -7, 1, 6, GOBLIN.shaft)
+    },
+}
+
+export function buildStatuses() {
+    return sheet(9, 9, 4, 8, Object.fromEntries(Object.entries(STATUS_ART).map(([name, draw]) => [name, [draw]])))
+}
+
 export function buildItems() {
     return sheet(16, 16, 8, 16, Object.fromEntries(Object.entries(ITEM_ART).map(([item, draw]) => [item, [draw]])))
 }
@@ -681,6 +719,25 @@ export function buildIcons() {
             disc(16, 16, 11, (x, y) => x * x + y * y > 80 ? ICE[0] : x + y < -4 ? ICE[2] : ICE[1])
             rect(15, 8, 2, 16, '#bff0ff')
             rect(8, 15, 16, 2, '#bff0ff')
+        }),
+        whirl: icon(p => {
+            sword(p, HERO.blade)
+            for (let a = 0; a < 5; a += 0.08) p.rect(...ray(16, 16, a)(13), 1, 1, '#8ff0e4')
+        }),
+        volley: icon(({ rect, line }) => {
+            for (const x of [9, 17, 25]) {
+                line(x - 5, 4, x, 23, GOBLIN.shaft)
+                rect(x - 1, 23, 3, 4, GOBLIN.tip)
+                rect(x - 6, 3, 3, 2, GOBLIN.feather)
+            }
+        }),
+        nova: icon(({ rect, line, disc }) => {
+            for (let a = 0; a < 6.3; a += 0.05) {
+                rect(...ray(16, 16, a)(12), 2, 2, ICE[1])
+                rect(...ray(16, 16, a)(8), 1, 1, ICE[0])
+            }
+            for (const a of [0, 1.57, 3.14, 4.71]) line(...ray(16, 16, a)(4), ...ray(16, 16, a)(10), '#bff0ff')
+            disc(16, 16, 3, ICE[2])
         }),
         potion: icon(({ rect, disc }) => {
             rect(13, 4, 6, 4, '#8a5a2b')

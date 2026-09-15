@@ -61,7 +61,7 @@ function frame(now) {
   if (input.hit('KeyH')) stage.classList.toggle('photo')
   input.endFrame()
   renderer.render(game, dt)
-  hud.update(game, fps)
+  hud.update(game, fps, renderer.gl.info.render.calls)
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(frame)
