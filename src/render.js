@@ -1,8 +1,9 @@
 import * as THREE from 'three'
 import { GROUND, H, LEVEL_W, view } from './const.js'
 import { buildWorld, buildVignette } from './art.js'
-import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildBolt, buildArrow, buildIcicle, buildItems, buildStatuses, buildGlow } from './sprites.js'
-import { SLOTS, ATTACK_TIME, ROLL_TIME, BOW_CHARGE, aimArrow, flyArrow } from './player.js'
+import { buildHero, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildMimic, buildBolt, buildArrow, buildNet, buildIcicle, buildItems, buildStatuses, buildGlow } from './sprites.js'
+import { SLOTS, ROLL_TIME, aimArrow, flyArrow, charge } from './player.js'
+import { GEAR_SLOTS } from './items.js'
 import { TYPES } from './enemies.js'
 import { has } from './status.js'
 import { hitboxes } from './dev.js'
@@ -80,8 +81,8 @@ const cycle = (list, phase) => list[Math.floor(phase / (Math.PI * 2) * list.leng
 function heroFrame(p, frames, time) {
     if (p.rollT >= 0) return pick(frames.roll, p.rollT / ROLL_TIME)
     if (p.whirlT >= 0) return pick(frames.attack, (p.whirlT * 4) % 1)
-    if (p.attackT >= 0) return pick(frames.attack, p.attackT / ATTACK_TIME)
-    if (p.drawT >= 0) return pick(frames.aim, p.drawT / BOW_CHARGE)
+    if (p.attackT >= 0) return pick(frames.attack, p.attackT / p.attackTime)
+    if (p.drawT >= 0) return pick(frames.aim, charge(p))
     if (!p.onGround) return frames.jump[p.vy < 0 ? 0 : 1]
     if (Math.abs(p.vx) > 10) return cycle(frames.walk, p.walk)
     return frames.idle[Math.floor(time * 3) % frames.idle.length]
@@ -89,7 +90,7 @@ function heroFrame(p, frames, time) {
 
 function enemyFrame(e, frames) {
     if (e.state === 'walk') return cycle(frames.walk, e.walk)
-    if (e.state === 'idle') return frames.idle[Math.floor(e.t * 3) % frames.idle.length]
+    if (e.state === 'idle' || e.state === 'lurk') return frames.idle[Math.floor(e.t * 3) % frames.idle.length]
     const { pattern } = e
     const duration = e.state === 'windup' ? pattern.windup * 0.6 : pattern[e.state]
     return pick(frames[pattern.poses?.[e.state] ?? e.state], e.t / duration)
@@ -179,10 +180,10 @@ export class Renderer {
         this.worlds = new Map()
 
         this.sheets = {
-            ogre: load(buildOgre(false)), chief: load(buildOgre(true)), wolf: load(buildWolf(false)), alpha: load(buildWolf(true)),
-            archer: load(buildGoblin()), shaman: load(buildShaman()), chest: load(buildChest()),
-            merchant: load(buildMerchant()), board: load(buildBoard()),
-            bolt: load(buildBolt()), arrow: load(buildArrow()), icicle: load(buildIcicle()), items: load(buildItems()), statuses: load(buildStatuses()),
+            ogre: load(buildOgre(false)), chief: load(buildOgre(true)), wolf: load(buildWolf('wolf')), alpha: load(buildWolf('alpha')), lynx: load(buildWolf('lynx')),
+            archer: load(buildGoblin('archer')), looter: load(buildGoblin('looter')), poacher: load(buildGoblin('poacher')), shaman: load(buildShaman()),
+            chest: load(buildChest()), mimic: load(buildMimic()), merchant: load(buildMerchant()), board: load(buildBoard()),
+            bolt: load(buildBolt()), arrow: load(buildArrow()), net: load(buildNet()), icicle: load(buildIcicle()), items: load(buildItems()), statuses: load(buildStatuses()),
         }
         this.marks = []
         // Dev outlines of bodies and hit zones, 8 line ends per box
@@ -197,7 +198,9 @@ export class Renderer {
         this.enemies = []
         this.bolts = []
         this.arrows = []
+        this.nets = []
         this.shots = []
+        this.spirits = []
         this.icicles = []
         this.traps = []
         this.pickups = []
@@ -262,9 +265,10 @@ export class Renderer {
 
         const blink = p.hurtT > 0 && Math.floor(game.time * 20) % 2
         const whirl = p.whirlT >= 0
-        const item = whirl ? 'sword' : SLOTS[p.slot] ?? 'sword'
-        const heroKey = Object.values(p.gear).join() + item
-        const heroSheet = this.heroSheets[heroKey] ??= load(buildHero(p.gear, item))
+        const item = whirl ? 'weapon' : SLOTS[p.slot] ?? 'weapon'
+        const looks = Object.fromEntries(GEAR_SLOTS.map(slot => [slot, p.gear[slot]?.base]))
+        const heroKey = Object.values(looks).join() + item
+        const heroSheet = this.heroSheets[heroKey] ??= load(buildHero(looks, item))
         this.hero ??= new Sprite(this.scene, heroSheet, ORDER.hero)
         this.hero.use(heroSheet)
         // The whirl spins by turning the hero around quickly
@@ -287,23 +291,34 @@ export class Renderer {
         this.renderStatuses(game)
         this.renderBoxes(game)
         this.renderProjectiles(game.bolts, this.bolts, this.sheets.bolt)
-        this.renderProjectiles(game.arrows, this.arrows, this.sheets.arrow)
+        this.renderProjectiles(game.arrows.filter(a => !a.net), this.arrows, this.sheets.arrow)
+        this.renderProjectiles(game.arrows.filter(a => a.net), this.nets, this.sheets.net)
         this.renderProjectiles(game.shots, this.shots, this.sheets.arrow)
         this.renderProjectiles(game.icicles, this.icicles, this.sheets.icicle)
         // Hanging icicles point down and shake before they fall
         const traps = game.traps.map(trap => ({ x: trap.x + (trap.t >= 0 ? Math.round(Math.sin(game.time * 60)) : 0), y: trap.y, vx: 0, vy: 1 }))
         this.renderProjectiles(traps, this.traps, this.sheets.icicle)
 
+        // Spirit wolves are see-through and pale blue
+        const { wolf } = this.sheets
+        game.spirits.forEach((s, i) => {
+            const spirit = this.spirits[i] ??= new Sprite(this.scene, wolf, ORDER.enemy)
+            spirit.show(s.x, GROUND, s.dir, cycle(wolf.frames.walk, game.time * 20))
+            spirit.uniforms.alpha.value = 0.6 * s.life
+            spirit.uniforms.flash.value.set(0.6, 0.9, 1, 0.6)
+        })
+        hideFrom(this.spirits, game.spirits.length)
+
         const { items } = this.sheets
         game.pickups.forEach((q, i) => {
             this.pickups[i] ??= new Sprite(this.scene, items, ORDER.pickup)
             const bob = q.y < GROUND ? 0 : Math.round(Math.sin(game.time * 5 + q.x) * 1.5) - 2
-            this.pickups[i].show(q.x, q.y + bob, 1, items.frames[q.item][0])
+            this.pickups[i].show(q.x, q.y + bob, 1, items.frames[q.item.base ?? q.item][0])
         })
         hideFrom(this.pickups, game.pickups.length)
 
         const glows = [
-            ...game.bolts.map(b => ({ x: b.x, y: b.y, size: 30, color: '#4fc3f7', alpha: 0.9 })),
+            ...game.bolts.map(b => ({ x: b.x, y: b.y, size: 30 + b.radius, color: '#4fc3f7', alpha: 0.9 })),
             ...game.icicles.map(s => ({ x: s.x, y: s.y, size: 24, color: '#4fc3f7', alpha: 0.6 })),
             ...game.flashes.map(f => ({ ...f, alpha: f.life / 0.2 })),
         ]
@@ -320,7 +335,7 @@ export class Renderer {
         hideFrom(this.glows, glows.length)
 
         for (const q of game.particles) this.particles.push(q.x, q.y, q.color, q.size)
-        if (p.drawT >= 0) {
+        if (p.drawT >= 0 && SLOTS[p.slot] === 'bow') {
             // Dotted flight path of the arrow being aimed
             const arrow = aimArrow(p)
             for (let i = 1; i <= 45 && arrow.y < GROUND; i++) {

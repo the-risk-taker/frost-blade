@@ -37,7 +37,10 @@ addEventListener('pointerdown', e => {
 addEventListener('pointerup', lift)
 addEventListener('pointercancel', lift)
 addEventListener('contextmenu', e => e.preventDefault())
-addEventListener('wheel', e => { wheel += Math.sign(e.deltaY) })
+// The wheel scrolls boxes with long content instead of switching hotbar slots
+addEventListener('wheel', e => {
+    if (!e.target.closest('#panel, #changelog')) wheel += Math.sign(e.deltaY)
+})
 addEventListener('blur', () => down.clear())
 
 export const input = {

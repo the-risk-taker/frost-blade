@@ -11,7 +11,7 @@ const HERO = {
     backPants: ['#150f0c', '#2a201b'],
     boots: ['#150d0a', '#3a261a'],
     blade: ['#2a9d94', '#4fd6c8', '#d4fff8'],
-    belt: '#241510', gold: '#e2c070', eye: '#1d1410', hilt: '#5a3a22', guard: '#c9a050',
+    belt: '#241510', gold: '#e2c070', eye: '#1d1410', hilt: '#5a3a22', guard: '#c9a050', hand: '#e9b48c',
 }
 const OGRE = {
     skin: ['#5e3f2c', '#8f6446', '#b3845a', '#d0a476'],
@@ -23,6 +23,7 @@ const OGRE = {
 }
 const WOLF = { fur: ['#3c4650', '#6b7884', '#9aa8b3', '#c9d4dc'], eye: '#ffd23f', nose: '#141414', mouth: '#5a1a1a', teeth: '#ffffff' }
 const ALPHA = { ...WOLF, fur: ['#20262c', '#3b444c', '#58636c', '#dfe8ee'], eye: '#ff4a2f' }
+const LYNX = { ...WOLF, fur: ['#6b4e32', '#a8814f', '#d0aa74', '#f2e6cc'], eye: '#9fe84a' }
 const ICE = ['#3aa6e0', '#8fdcfa', '#ffffff']
 const SHAMAN = {
     robe: ['#1f3550', '#2f5078', '#4a74a0'],
@@ -35,13 +36,32 @@ const GOBLIN = {
     bow: ['#5a3418', '#8a5a2b'],
     boots: '#2a1a10', belt: '#1f140c', pupil: '#1a1208', eye: '#ffe34a', string: '#e8e0c8', shaft: '#c9a878', tip: '#b8c8d2', feather: '#d04040', tooth: '#f3ead0',
 }
+const LOOTER = { ...GOBLIN, cloth: ['#3a3430', '#5a524a', '#7a7068'] }
+const POACHER = { ...GOBLIN, skin: HERO.skin, cloth: ['#2e3d22', '#4a5e34', '#6a7e4a'] }
 const IRON = ['#3c4247', '#6b7378', '#a3aaaf']
-// Body gear recolors the hero's clothes
+const GOLD = ['#9a6a1c', '#e2c070', '#fff2a8']
+// Body, hands and feet gear recolors the hero's clothes
 const GEAR = {
     armor: { vest: IRON, shirt: ['#555c61', '#7d858a', '#b5bcc0'] },
+    chainmail: { vest: ['#474e53', '#6b7378', '#8a9398'] },
     robe: { vest: ['#1d3566', '#2f5aa8', '#5c8ae0'], shirt: ['#6fa8dc', '#a8d4f0', '#dff2ff'] },
+    gloves: { hand: '#6e4225' },
+    boots: { boots: ['#3f2415', '#94602f'] },
 }
 const MERCHANT = { robe: ['#3b2a1a', '#5e4128', '#86603a'], pack: ['#4a2f1a', '#7a5230', '#a87a48'], beard: ['#a0a0a0', '#dcdcdc'], lamp: '#ffd86a' }
+
+const quiver = (tip, feather) => ({ rect, line }) => {
+    for (const x of [-3, 0, 3]) {
+        line(x - 2, -2, x + 2, -11, GOBLIN.shaft)
+        rect(x + 1, -13, 3, 3, tip)
+        rect(x - 3, -3, 2, 2, feather)
+    }
+}
+
+const bowArt = r => ({ rect, line }) => {
+    for (let i = -r; i <= r; i++) rect(-3 + Math.round(5 * (1 - (i / r) ** 2)), -8 + i, 2, 1, GOBLIN.bow[1])
+    line(-3, -8 - r, -3, -8 + r, GOBLIN.string)
+}
 
 // Loot and gear in a 16x16 cell with the origin at the bottom center
 const ITEM_ART = {
@@ -50,13 +70,39 @@ const ITEM_ART = {
         disc(2, -8, 3, '#f0c419')
         rect(1, -10, 2, 1, '#fff2a8')
     },
-    arrows: ({ rect, line }) => {
-        for (const x of [-3, 0, 3]) {
-            line(x - 2, -2, x + 2, -11, GOBLIN.shaft)
-            rect(x + 1, -13, 3, 3, GOBLIN.tip)
-            rect(x - 3, -3, 2, 2, GOBLIN.feather)
+    arrows: quiver(GOBLIN.tip, GOBLIN.feather),
+    iceArrows: quiver(ICE[1], ICE[2]),
+    fireArrows: quiver('#f07a19', '#f0c419'),
+    pierceArrows: quiver('#ffffff', IRON[0]),
+    sword: ({ line }) => {
+        line(-4, -4, 5, -13, HERO.blade[1], 2)
+        line(-3, -5, 5, -13, HERO.blade[2])
+        line(-7, -6, -3, -2, HERO.guard, 2)
+        line(-7, -1, -5, -3, HERO.hilt, 2)
+    },
+    axe: ({ rect, line }) => {
+        line(-5, -1, 3, -13, HERO.hilt, 2)
+        rect(2, -12, 5, 6, IRON[1])
+        rect(6, -13, 2, 8, IRON[2])
+    },
+    spear: ({ rect, line }) => {
+        line(-6, -1, 3, -11, HERO.hilt, 2)
+        rect(3, -14, 3, 3, IRON[2])
+        rect(2, -12, 2, 2, IRON[1])
+    },
+    daggers: ({ rect, line }) => {
+        for (const x of [-5, 1]) {
+            line(x, -2, x + 3, -11, HERO.blade[1], 2)
+            rect(x - 1, -4, 4, 1, HERO.guard)
         }
     },
+    staff: ({ rect, line, disc }) => {
+        line(-4, -1, 2, -11, SHAMAN.staff, 2)
+        disc(3, -12, 2, ICE[1])
+        rect(3, -13, 1, 1, ICE[2])
+    },
+    bow: bowArt(6),
+    shortbow: bowArt(4),
     potion: ({ rect, disc }) => {
         rect(-1, -14, 3, 2, '#8a5a2b')
         rect(-1, -12, 3, 3, '#b8d8e0')
@@ -75,6 +121,17 @@ const ITEM_ART = {
         rect(-1, -6, 3, 2, GOBLIN.tooth)
         rect(0, -4, 2, 2, '#c9bc98')
     },
+    hood: ({ rect }) => {
+        rect(-5, -12, 10, 10, WOLF.fur[1])
+        rect(-5, -12, 10, 2, WOLF.fur[3])
+        rect(-3, -9, 6, 5, HERO.pants[1])
+    },
+    crown: ({ rect }) => {
+        rect(-6, -7, 12, 5, GOLD[1])
+        rect(-6, -7, 12, 1, GOLD[2])
+        for (const x of [-6, -1, 4]) rect(x, -11, 2, 4, GOLD[1])
+        rect(-1, -5, 2, 2, HERO.scarf[2])
+    },
     helmet: ({ rect }) => {
         rect(-5, -11, 10, 6, IRON[1])
         rect(-4, -12, 8, 1, IRON[1])
@@ -91,6 +148,11 @@ const ITEM_ART = {
         rect(4, -12, 3, 4, IRON[1])
         rect(-2, -12, 4, 2, INK)
     },
+    chainmail: ({ rect }) => {
+        rect(-5, -12, 10, 11, GEAR.chainmail.vest[1])
+        for (let y = -11; y < -1; y += 2) for (let x = -4 + (y & 2); x < 5; x += 2) rect(x, y, 1, 1, GEAR.chainmail.vest[2])
+        rect(-2, -12, 4, 2, INK)
+    },
     robe: ({ rect }) => {
         const [dark, mid] = GEAR.robe.vest
         rect(-4, -13, 8, 9, mid)
@@ -103,6 +165,40 @@ const ITEM_ART = {
         rect(-6, -3, 12, 2, WOLF.fur[1])
         rect(-5, -12, 2, 11, WOLF.fur[0])
         rect(-5, -13, 10, 3, WOLF.fur[3])
+    },
+    shamanCloak: ({ rect }) => {
+        rect(-5, -12, 10, 11, SHAMAN.robe[1])
+        rect(-5, -12, 2, 11, SHAMAN.robe[0])
+        rect(-5, -13, 10, 3, SHAMAN.bone)
+    },
+    gloves: ({ rect }) => {
+        for (const [x, y] of [[-6, -10], [1, -11]]) {
+            rect(x, y, 5, 7, GEAR.gloves.hand)
+            rect(x, y + 5, 5, 2, HERO.vest[0])
+        }
+    },
+    boots: ({ rect }) => {
+        for (const [x, y] of [[-7, 0], [1, -1]]) {
+            rect(x, y - 11, 4, 8, GEAR.boots.boots[1])
+            rect(x, y - 4, 6, 3, GEAR.boots.boots[0])
+        }
+    },
+    ring: ({ rect, disc }) => {
+        disc(0, -5, 4, GOLD[1])
+        disc(0, -5, 2, HERO.vest[0])
+        rect(-1, -11, 3, 2, HERO.scarf[2])
+    },
+    amulet: ({ line, disc }) => {
+        line(-4, -14, 0, -7, GOLD[1])
+        line(4, -14, 0, -7, GOLD[1])
+        disc(0, -5, 2, '#5c85ff')
+    },
+    alphaFang: ({ rect, line }) => {
+        line(-4, -14, 0, -9, HERO.hilt)
+        line(4, -14, 0, -9, HERO.hilt)
+        rect(-1, -9, 3, 3, GOBLIN.tooth)
+        rect(0, -6, 2, 3, GOBLIN.tooth)
+        rect(0, -3, 1, 1, ALPHA.eye)
     },
 }
 
@@ -131,14 +227,16 @@ function sheet(cellW, cellH, originX, originY, animations, scale = 1) {
     return { canvas, frames, cellW, cellH, originX, originY }
 }
 
-function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, gear, item = 'sword' }) {
-    const c = { ...HERO, ...GEAR[gear.body] }
+// Gear holds the base of the piece worn in every slot, item is the hotbar slot in use
+function hero({ rect, line, disc }, { bob = 0, walk, air = 0, swing, wave = 0, draw, gear, item = 'weapon' }) {
+    const c = { ...HERO, ...GEAR[gear.body], ...GEAR[gear.hands], ...GEAR[gear.feet] }
     const moving = walk !== undefined
     const step = moving ? Math.round(Math.sin(walk) * 3) : 0
     const y = moving ? -Math.round(Math.abs(Math.cos(walk))) : bob
     const tail = Math.round(Math.sin(wave * Math.PI * 2) * 1.5)
     const [backLift, frontLift] = air < 0 ? [1, 4] : air > 0 ? [3, 1] : [Math.max(0, -step - 1), Math.max(0, step - 1)]
-    if (gear.back) line(-4, -24 + y, -9, -6 + tail, WOLF.fur[1], 5)
+    const cape = { cloak: WOLF.fur[1], shamanCloak: SHAMAN.robe[1] }[gear.back]
+    if (cape) line(-4, -24 + y, -9, -6 + tail, cape, 5)
     const leg = (x, lift, [dark, mid]) => {
         rect(x, -13, 3, 10 - lift, mid)
         rect(x, -13, 1, 10 - lift, dark)
@@ -173,11 +271,18 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, g
     rect(-4, -34 + y, 3, 6, c.hair[1])
     rect(-4, -29 + y, 2, 1, c.hair[0])
     rect(3, -34 + y, 2, 1, c.hair[1])
-    if (gear.head) {
-        rect(-4, -38 + y, 10, 5, IRON[1])
-        rect(-4, -38 + y, 10, 1, IRON[2])
-        rect(-4, -34 + y, 10, 1, IRON[0])
-        rect(4, -33 + y, 1, 3, IRON[1])
+    if (gear.head === 'helmet' || gear.head === 'crown') {
+        const metal = gear.head === 'crown' ? GOLD : IRON
+        rect(-4, -38 + y, 10, 5, metal[1])
+        rect(-4, -38 + y, 10, 1, metal[2])
+        rect(-4, -34 + y, 10, 1, metal[0])
+        rect(4, -33 + y, 1, 3, metal[1])
+        if (gear.head === 'crown') for (const x of [-4, 0, 4]) rect(x, -40 + y, 2, 2, metal[1])
+    }
+    if (gear.head === 'hood') {
+        rect(-4, -38 + y, 10, 4, WOLF.fur[1])
+        rect(-4, -38 + y, 10, 1, WOLF.fur[3])
+        rect(-5, -35 + y, 3, 9, WOLF.fur[1])
     }
 
     line(-3, -25 + y, -9, -23 + y + tail, c.scarf[0], 2)
@@ -185,28 +290,12 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, g
     rect(0, -27 + y, 4, 1, c.scarf[2])
 
     const shoulder = -23 + y
-    // With the bow selected but not drawn, it hangs unstrung until aiming takes over
-    if (draw !== undefined || item === 'bow') {
-        const d = draw ?? 0
-        for (let i = -9; i <= 9; i++) rect(9 + Math.round(4 * (1 - (i / 9) ** 2)), shoulder + i, 2, 1, Math.abs(i) > 7 ? GOBLIN.bow[0] : GOBLIN.bow[1])
-        line(9, shoulder - 9, 9 - d, shoulder, GOBLIN.string)
-        line(9 - d, shoulder, 9, shoulder + 9, GOBLIN.string)
-        if (draw !== undefined) {
-            line(8 - d, shoulder, 20 - d, shoulder, GOBLIN.shaft)
-            rect(20 - d, shoulder - 1, 3, 3, GOBLIN.tip)
-        }
-        line(1, shoulder, 12, shoulder, c.shirt[1], 3)
-        rect(12, shoulder - 1, 3, 3, c.skin[1])
-        line(0, shoulder + 1, 8 - d, shoulder, c.skin[1], 2)
-        return
-    }
-
-    // Frost bolt and potion are simply held forward, no swing pose for them
+    // Frost bolt and potion are simply held forward, no swing pose for them. A charging staff bolt grows into a bigger orb.
     if (item === 'frost') {
-        const hand = ray(1, shoulder, 0.9)(9)
-        line(1, shoulder, ...hand, c.shirt[1], 3)
-        rect(hand[0] - 2, hand[1] - 2, 4, 4, '#3aa6e0')
-        rect(hand[0] - 1, hand[1] - 1, 2, 2, '#ffffff')
+        const [x, y] = ray(1, shoulder, 0.9)(9).map(Math.round)
+        const size = 2 + Math.round((draw ?? 0) / 2)
+        line(1, shoulder, x, y, c.shirt[1], 3)
+        disc(x, y, size, (dx, dy) => dx * dx + dy * dy > size * size - size ? ICE[0] : dx + dy < 0 ? ICE[2] : ICE[1])
         return
     }
     if (item === 'potion') {
@@ -217,26 +306,61 @@ function hero({ rect, line }, { bob = 0, walk, air = 0, swing, wave = 0, draw, g
         return
     }
 
+    // With the bow selected but not drawn, it hangs unstrung until aiming takes over. A short bow has shorter limbs.
+    if (draw !== undefined || item === 'bow') {
+        const d = draw ?? 0
+        const r = gear.bow === 'shortbow' ? 6 : 9
+        for (let i = -r; i <= r; i++) rect(9 + Math.round(4 * (1 - (i / r) ** 2)), shoulder + i, 2, 1, Math.abs(i) > r - 2 ? GOBLIN.bow[0] : GOBLIN.bow[1])
+        line(9, shoulder - r, 9 - d, shoulder, GOBLIN.string)
+        line(9 - d, shoulder, 9, shoulder + r, GOBLIN.string)
+        if (draw !== undefined) {
+            line(8 - d, shoulder, 20 - d, shoulder, GOBLIN.shaft)
+            rect(20 - d, shoulder - 1, 3, 3, GOBLIN.tip)
+        }
+        line(1, shoulder, 12, shoulder, c.shirt[1], 3)
+        rect(12, shoulder - 1, 3, 3, c.hand)
+        line(0, shoulder + 1, 8 - d, shoulder, c.hand, 2)
+        return
+    }
+
     let arm = 0.9
     let sword = -1 + (moving ? Math.sin(walk) * 0.1 : 0)
     if (swing !== undefined) arm = sword = -2.1 + 3.1 * ease(Math.min(1, swing / 0.55))
     const hand = ray(1, shoulder, arm)(7)
     const s = ray(...hand, sword)
-    line(...s(4), ...s(21), c.blade[1], 2)
-    line(...s(5), ...s(20), c.blade[2])
-    line(...s(5, 1), ...s(20, 1), c.blade[0])
+    // Sword and daggers have a blade, the rest is a shaft with a head at the end
+    const blade = { sword: 21, daggers: 11 }[gear.weapon]
+    if (blade) {
+        line(...s(4), ...s(blade), c.blade[1], 2)
+        line(...s(5), ...s(blade - 1), c.blade[2])
+        line(...s(5, 1), ...s(blade - 1, 1), c.blade[0])
+        line(...s(3, -3), ...s(3, 3), c.guard, 2)
+    } else {
+        line(...s(-6), ...s({ axe: 20, spear: 30, staff: 24 }[gear.weapon]), c.hilt, 2)
+    }
+    // The axe blade sticks out on the side of the swing, with a bright edge
+    if (gear.weapon === 'axe') {
+        for (let d = 14; d <= 20; d++) line(...s(d, 1), ...s(d, 4 + Math.abs(17 - d) / 2), IRON[1])
+        line(...s(12, 6), ...s(22, 6), IRON[2], 2)
+    }
+    if (gear.weapon === 'spear') line(...s(30), ...s(36), IRON[2], 3)
+    if (gear.weapon === 'staff') {
+        const [x, y] = s(26)
+        rect(x - 2, y - 2, 4, 5, ICE[1])
+        rect(x - 1, y - 1, 2, 2, ICE[2])
+    }
     line(...s(-2), ...s(2), c.hilt, 2)
-    line(...s(3, -3), ...s(3, 3), c.guard, 2)
     line(1, shoulder, ...hand, c.shirt[1], 3)
-    rect(hand[0] - 1, hand[1] - 1, 3, 3, c.skin[1])
+    rect(hand[0] - 1, hand[1] - 1, 3, 3, c.hand)
 
     if (swing > 0 && swing <= 0.5) {
+        const arc = { daggers: 16, spear: 34 }[gear.weapon] ?? 26
         return () => {
             for (let a = Math.max(-2.1, arm - 1.8); a < arm; a += 0.03) {
                 const color = a > arm - 0.7 ? '#ffffff' : '#8ff0e4'
-                rect(...ray(1, shoulder, a)(27), 1, 1, color)
-                rect(...ray(1, shoulder, a)(26), 1, 1, color)
-                if (a > arm - 0.9) rect(...ray(1, shoulder, a)(25), 1, 1, '#8ff0e4')
+                rect(...ray(1, shoulder, a)(arc + 1), 1, 1, color)
+                rect(...ray(1, shoulder, a)(arc), 1, 1, color)
+                if (a > arm - 0.9) rect(...ray(1, shoulder, a)(arc - 1), 1, 1, '#8ff0e4')
             }
         }
     }
@@ -397,15 +521,18 @@ function wolf({ rect, line }, { run, crouch = 0, leap = false, bob = 0, wag = 0,
     }
 }
 
-function goblin({ rect, line }, { walk, bob = 0, draw = 0, loaded = true }) {
-    const c = GOBLIN
+// Archers carry a bow, looters a sack and a knife, poachers a net to throw
+function goblin({ rect, line, disc }, { walk, bob = 0, draw = 0, loaded = true, c = GOBLIN, carry = 'bow' }) {
     const moving = walk !== undefined
     const step = moving ? Math.round(Math.sin(walk) * 2) : 0
     const y = moving ? -Math.round(Math.abs(Math.cos(walk))) : bob
 
-    rect(-9, -22 + y, 3, 11, c.bow[0])
-    rect(-9, -25 + y, 1, 3, c.string)
-    rect(-7, -24 + y, 1, 2, c.feather)
+    if (carry === 'bow') {
+        rect(-9, -22 + y, 3, 11, c.bow[0])
+        rect(-9, -25 + y, 1, 3, c.string)
+        rect(-7, -24 + y, 1, 2, c.feather)
+    }
+    if (carry === 'sack') disc(-8, -18 + y, 6, c.cloth[0])
     rect(-4 - step, -10, 3, 8, c.cloth[0])
     rect(-5 - step, -2, 4, 2, c.boots)
     rect(1 + step, -10, 3, 8, c.cloth[1])
@@ -427,8 +554,19 @@ function goblin({ rect, line }, { walk, bob = 0, draw = 0, loaded = true }) {
     rect(-4, -34 + y, 11, 3, c.cloth[0])
     rect(-5, -32 + y, 3, 5, c.cloth[0])
 
-    // Bow bends forward, the string is pulled back by draw pixels
     const grip = -18 + y
+    if (carry === 'net') {
+        if (loaded) for (let i = 0; i < 7; i++) rect(3 - draw + i, grip - 3 + (i % 2), 1, 6, i % 2 ? c.string : c.bow[0])
+        line(2, -19 + y, 5 - draw, grip, c.skin[1], 2)
+        return
+    }
+    if (carry === 'sack') {
+        const tip = loaded ? 12 - draw : 17
+        line(tip - 6, grip, tip, grip, c.tip)
+        line(2, -19 + y, tip - 6, grip, c.skin[1], 2)
+        return
+    }
+    // Bow bends forward, the string is pulled back by draw pixels
     for (let i = -8; i <= 8; i++) rect(11 + Math.round(4 * (1 - (i / 8) ** 2)), grip + i, 2, 1, Math.abs(i) > 6 ? c.bow[0] : c.bow[1])
     line(11, grip - 8, 11 - draw, grip, c.string)
     line(11 - draw, grip, 11, grip + 8, c.string)
@@ -485,9 +623,9 @@ function shaman({ rect, line }, { walk, bob = 0, raise = 0 }) {
     }
 }
 
-// Regular wolves and their bigger pack leader, who also charges and howls
-export function buildWolf(alpha) {
-    const pose = extra => p => wolf(p, { c: alpha ? ALPHA : WOLF, ...extra })
+// Regular wolves, lynxes painted the same way and the bigger pack leader, who also charges and howls
+export function buildWolf(kind) {
+    const pose = extra => p => wolf(p, { c: { wolf: WOLF, alpha: ALPHA, lynx: LYNX }[kind], ...extra })
     const run = phases(6).map(t => pose({ run: t * Math.PI * 2, wag: -2 }))
     const animations = {
         idle: phases(4).map(t => pose({ bob: t < 0.5 ? 0 : 1, wag: Math.round(Math.sin(t * Math.PI * 2) * 2) })),
@@ -498,7 +636,7 @@ export function buildWolf(alpha) {
         charge: [...run, ...run, ...run],
         howl: [0, 1].map(bob => pose({ howl: true, bob })),
     }
-    return alpha ? sheet(96, 72, 46, 68, animations, 1.4) : sheet(64, 40, 30, 36, animations)
+    return kind === 'alpha' ? sheet(96, 72, 46, 68, animations, 1.4) : sheet(64, 40, 30, 36, animations)
 }
 
 export function buildShaman() {
@@ -523,13 +661,26 @@ export function buildIcicle() {
     })
 }
 
-export function buildGoblin() {
+export function buildGoblin(kind) {
+    const pose = extra => p => goblin(p, { ...{ looter: { c: LOOTER, carry: 'sack' }, poacher: { c: POACHER, carry: 'net' } }[kind], ...extra })
     return sheet(48, 40, 18, 37, {
-        idle: phases(4).map(t => p => goblin(p, { bob: t < 0.5 ? 0 : 1 })),
-        walk: phases(8).map(t => p => goblin(p, { walk: t * Math.PI * 2 })),
-        windup: [0, 2, 4, 6].map(draw => p => goblin(p, { draw })),
-        attack: [p => goblin(p, { loaded: false })],
-        recover: [p => goblin(p, { loaded: false }), p => goblin(p, {})],
+        idle: phases(4).map(t => pose({ bob: t < 0.5 ? 0 : 1 })),
+        walk: phases(8).map(t => pose({ walk: t * Math.PI * 2 })),
+        windup: [0, 2, 4, 6].map(draw => pose({ draw })),
+        attack: [pose({ loaded: false })],
+        recover: [pose({ loaded: false }), pose({})],
+    })
+}
+
+// Net thrown by poachers
+export function buildNet() {
+    return sheet(12, 12, 6, 6, {
+        fly: [({ rect }) => {
+            for (let i = -4; i <= 4; i += 2) {
+                rect(i, -4, 1, 9, GOBLIN.string)
+                rect(-4, i, 9, 1, GOBLIN.string)
+            }
+        }],
     })
 }
 
@@ -546,7 +697,7 @@ export function buildArrow() {
 
 export function buildHero(gear, item) {
     const pose = extra => p => hero(p, { gear, item, ...extra })
-    return sheet(64, 60, 31, 55, {
+    return sheet(72, 68, 35, 63, {
         idle: phases(4).map(t => pose({ bob: t < 0.5 ? 0 : 1, wave: t })),
         walk: phases(8).map(t => pose({ walk: t * Math.PI * 2, wave: t * 2 })),
         jump: [-1, 1].map(air => pose({ air, wave: 0.25 })),
@@ -568,13 +719,44 @@ function chest({ rect }) {
     rect(0, -9, 1, 1, INK)
 }
 
+const glint = p => {
+    chest(p)
+    return () => p.rect(3, -13, 1, 1, '#ffffff')
+}
+
 // Treasure chest with a glint now and then
 export function buildChest() {
-    const glint = p => {
-        chest(p)
-        return () => p.rect(3, -13, 1, 1, '#ffffff')
-    }
     return sheet(24, 20, 12, 18, { idle: [chest, chest, chest, glint] })
+}
+
+// A chest with teeth: the lid lifts by open pixels and the whole box hops as it walks
+function mimic({ rect }, { open, hop = 0 }) {
+    const y = -hop
+    rect(-9, -12 + y, 18, 12, '#8a5a2b')
+    rect(-9, -2 + y, 18, 2, '#5a3418')
+    rect(-7, -12 + y, 2, 12, IRON[1])
+    rect(5, -12 + y, 2, 12, IRON[1])
+    rect(-8, -11 + y - open, 16, open + 1, WOLF.mouth)
+    for (let x = -7; x < 8; x += 3) {
+        rect(x, -11 + y, 1, 2, WOLF.teeth)
+        rect(x + 1, -12 + y - open, 1, 2, WOLF.teeth)
+    }
+    rect(-9, -14 + y - open, 18, 3, '#a8703a')
+    rect(-9, -14 + y - open, 18, 1, '#c98f4a')
+    rect(-4, -13 + y - open, 2, 1, OGRE.eye)
+    rect(2, -13 + y - open, 2, 1, OGRE.eye)
+}
+
+// Looks like a chest while it waits
+export function buildMimic() {
+    const pose = extra => p => mimic(p, extra)
+    return sheet(24, 28, 12, 26, {
+        idle: [chest, chest, chest, glint],
+        walk: [0, 2, 3, 2].map(hop => pose({ open: 1, hop })),
+        windup: [2, 4].map(open => pose({ open })),
+        attack: [pose({ open: 7, hop: 3 })],
+        recover: [4, 1].map(open => pose({ open })),
+    })
 }
 
 // Quest board with notes pinned under a snowy roof
@@ -633,6 +815,13 @@ const STATUS_ART = {
         rect(-2, -7, 1, 6, GOBLIN.shaft)
         rect(1, -7, 1, 6, GOBLIN.shaft)
     },
+    frenzy: ({ rect }) => {
+        for (const y of [-7, -4]) {
+            rect(0, y, 1, 1, '#ff6b5a')
+            rect(-1, y + 1, 3, 1, '#ff6b5a')
+            rect(-2, y + 2, 5, 1, '#c21a0e')
+        }
+    },
 }
 
 export function buildStatuses() {
@@ -680,10 +869,11 @@ export function buildGlow() {
     return canvas
 }
 
+// Hotbar icons: hand drawn ones for actions, twice as big item art for gear
 export function buildIcons() {
-    const icon = draw => {
+    const icon = (draw, ...origin) => {
         const canvas = makeCanvas(32, 32)
-        draw(painter(canvas.getContext('2d')))
+        draw(painter(canvas.getContext('2d'), ...origin))
         outline(canvas, INK)
         return canvas
     }
@@ -694,6 +884,7 @@ export function buildIcons() {
         line(5, 27, 10, 22, HERO.hilt, 3)
     }
     return {
+        ...Object.fromEntries(Object.entries(ITEM_ART).map(([item, draw]) => [item, icon(draw, 16, 32, 2)])),
         sword: icon(p => sword(p, HERO.blade)),
         bow: icon(({ rect, line }) => {
             for (let i = -11; i <= 11; i++) rect(10 + Math.round(8 * (1 - (i / 11) ** 2)), 16 + i, 3, 1, Math.abs(i) > 8 ? GOBLIN.bow[0] : GOBLIN.bow[1])

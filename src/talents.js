@@ -1,4 +1,4 @@
-import { ITEMS } from './items.js'
+import { bonuses } from './items.js'
 import { sfx } from './sound.js'
 
 // Three branches learned node by node, one point per level up. The third node of each branch unlocks an active skill.
@@ -14,15 +14,17 @@ export const noTalents = () => Object.fromEntries(Object.keys(TALENTS).map(branc
 const learned = p => Object.entries(TALENTS).flatMap(([branch, nodes]) => nodes.slice(0, p.talents[branch]))
 
 // Bonus from worn gear and learned talents
-export const stat = (p, key) => [...Object.values(p.gear).map(item => ITEMS[item]), ...learned(p)].reduce((sum, bonus) => sum + (bonus?.[key] ?? 0), 0)
+export const stat = (p, key) => [...Object.values(p.gear).filter(Boolean).map(bonuses), ...learned(p)].reduce((sum, bonus) => sum + (bonus[key] ?? 0), 0)
 
 export const points = p => p.level - 1 - Object.values(p.talents).reduce((sum, count) => sum + count, 0)
 
-// Every level adds a little health, mana and power, talents add the rest
+// Every level adds a little health, mana and power, talents and gear add the rest
 export function updateStats(p) {
     p.maxHp = 100 + 10 * (p.level - 1) + stat(p, 'maxHp')
     p.maxMana = 100 + 5 * (p.level - 1) + stat(p, 'maxMana')
     p.power = p.level - 1 + stat(p, 'power')
+    p.hp = Math.min(p.hp, p.maxHp)
+    p.mana = Math.min(p.mana, p.maxMana)
 }
 
 // Learns the next node of a branch. Picking a skill that is already learned makes it the active one.
@@ -49,7 +51,5 @@ export function resetTalents(p) {
     p.talents = noTalents()
     p.skill = null
     updateStats(p)
-    p.hp = Math.min(p.hp, p.maxHp)
-    p.mana = Math.min(p.mana, p.maxMana)
     sfx.coin()
 }

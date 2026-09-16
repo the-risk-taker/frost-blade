@@ -11,7 +11,7 @@ export const LEVELS = [
         merchants: [1100, 3000],
         ice: [[1380, 1520], [2450, 2580]],
         traps: [],
-        pool: { wolf: 3, archer: 2, shaman: 1, ogre: 1 },
+        pool: { wolf: 3, archer: 2, shaman: 1, ogre: 1, lynx: 1, poacher: 1, looter: 1, mimic: 1 },
         roamers: { count: 2, budget: 2 },
         enemies: [
             ['wolf', 520], ['wolf', 590], ['chest', 700], ['pool', 900, 3], ['archer', 1250],
@@ -31,7 +31,7 @@ export const LEVELS = [
         merchants: [1200, 3050],
         ice: [[600, 800], [1300, 1500], [2150, 2450], [3150, 3350], [3600, 3900]],
         traps: [950, 1550, 1900, 2350, 2650, 3450, 3750],
-        pool: { wolf: 3, ogre: 2, shaman: 1, archer: 1 },
+        pool: { wolf: 3, ogre: 2, shaman: 1, archer: 1, lynx: 1, looter: 1, mimic: 1 },
         roamers: { count: 3, budget: 3 },
         enemies: [
             ['wolf', 500], ['shaman', 700], ['chest', 850], ['pool', 1000, 3], ['wolf', 1400],
@@ -51,7 +51,7 @@ export const LEVELS = [
         merchants: [1150, 3000],
         ice: [[1850, 1950], [3300, 3400]],
         traps: [],
-        pool: { archer: 3, shaman: 2, ogre: 1, wolf: 1 },
+        pool: { archer: 3, shaman: 2, ogre: 1, wolf: 1, poacher: 1, looter: 1, mimic: 1 },
         roamers: { count: 3, budget: 3 },
         enemies: [
             ['archer', 550], ['archer', 620], ['chest', 800], ['ogre', 1000], ['pool', 1300, 2],

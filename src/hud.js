@@ -1,7 +1,7 @@
 import { GROUND, H, LEVEL_W, view } from './const.js'
 import { SLOTS, SKILLS, SKILL_KEY, COOLDOWNS, canUse } from './player.js'
 import { TYPES } from './enemies.js'
-import { ITEMS, OFFERS, canBuy, buy, sell, equip } from './items.js'
+import { ITEMS, OFFERS, GEAR_SLOTS, PACK_SIZE, PERCENT, RARITIES, bonuses, createItem, price, canBuy, buy, sell, equip, unequip } from './items.js'
 import { TALENTS, stat, points, pickTalent, resetCost, canReset, resetTalents } from './talents.js'
 import { LEVELS } from './levels.js'
 import { progress, takeQuest } from './quests.js'
@@ -12,14 +12,29 @@ import { version } from '../package.json'
 
 const touch = matchMedia('(pointer: coarse)').matches
 
-// Hotbar items that show how many are left in the bag
-const COUNTED = { bow: 'arrows', potion: 'potion' }
+// Stats where less is better, like the time of a swing
+const LOWER_BETTER = ['time', 'stamina', 'draw']
 
 const $ = id => document.getElementById(id)
 
 const questName = quest => quest.item
     ? t('questCollect', { item: t(`item.${quest.item}`), count: quest.count })
     : t('questKill', { enemy: t(`enemy.${quest.kill}`), count: quest.count })
+
+const itemName = item => `<span style="color:${RARITIES[item.rarity].color}">${t(`item.${item.base}`)}</span>`
+
+const statText = (key, value) => t(`stat.${key}`, { value: `${value > 0 ? '+' : ''}${PERCENT.includes(key) ? `${Math.round(value * 100)}%` : Math.round(value * 100) / 100}` })
+
+// Stats of a gear piece against the one worn in its slot, better ones green and worse ones red
+function compare(p, item) {
+    const next = bonuses(item)
+    const now = p.gear[ITEMS[item.base].slot] ? bonuses(p.gear[ITEMS[item.base].slot]) : {}
+    return Object.keys({ ...now, ...next }).map(key => {
+        const diff = (next[key] ?? 0) - (now[key] ?? 0)
+        const better = diff > 0 !== LOWER_BETTER.includes(key)
+        return diff ? `<p style="color:${better ? '#b8f5a0' : '#ff6b5a'}">${statText(key, diff)}</p>` : ''
+    }).join('')
+}
 
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 const summaryLine = game => t('summary', { time: formatTime(game.playTime), kills: game.totalKills, gold: game.player.bag.gold })
@@ -46,23 +61,22 @@ export class Hud {
     constructor(game) {
         $('version').textContent = `v${version}`
         const icons = this.icons = buildIcons()
-        const addSlot = (key, item) => {
+        const addSlot = key => {
             const slot = document.createElement('div')
             slot.className = 'slot'
             slot.dataset.key = key
-            if (item) slot.append(icons[item])
             $('slots').append(slot)
             return slot
         }
         this.slots = SLOTS.concat(Array(9 - SLOTS.length).fill(null)).map((item, i) => {
-            const slot = addSlot(`Digit${i + 1}`, item)
-            if (COUNTED[item]) slot.append(document.createElement('b'))
+            const slot = addSlot(`Digit${i + 1}`)
+            slot.append(document.createElement('b'))
             return slot
         })
         // Skill slots show their key. Touch buttons with the same key are greyed out along with them.
         // The last one holds the skill picked in the talent tree.
         this.skills = Object.entries({ ...SKILLS, [SKILL_KEY]: null }).map(([key, item]) => {
-            const slot = addSlot(key, item)
+            const slot = addSlot(key)
             slot.classList.add('skill')
             slot.append(Object.assign(document.createElement('b'), { textContent: key.slice(3) }))
             return { item, slot, elements: document.querySelectorAll(`[data-key="${key}"]`) }
@@ -72,10 +86,16 @@ export class Hud {
         $('panel').style.setProperty('--items', `url(${this.items.canvas.toDataURL()})`)
         const onPanelClick = e => {
             const p = game.player
-            const { offer, sale, gear, quest, talent, node, reset, close } = e.target.closest('[data-offer], [data-sale], [data-gear], [data-quest], [data-talent], [data-reset], [data-close]')?.dataset ?? {}
-            if (offer) buy(p, OFFERS[offer])
+            const { offer, purchase, sale, gearSale, pick, wear, slot, quiver, quest, talent, node, reset, close } = e.target.closest('[data-offer], [data-purchase], [data-sale], [data-gear-sale], [data-pick], [data-wear], [data-slot], [data-quiver], [data-quest], [data-talent], [data-reset], [data-close]')?.dataset ?? {}
+            // Offers and pack pieces are picked first to see their stats, then bought or put on with a button
+            if (offer) this.offer = Number(offer)
+            if (purchase) buy(p, OFFERS[this.offer])
             if (sale) sell(p, sale)
-            if (gear) equip(p, gear)
+            if (gearSale) sell(p, p.pack[gearSale])
+            if (pick) this.picked = p.pack[pick]
+            if (wear) equip(p, this.picked)
+            if (slot) unequip(p, slot)
+            if (quiver) p.quiver = quiver
             if (quest) takeQuest(game, game.quests[quest])
             if (talent) pickTalent(p, talent, Number(node))
             if (reset) resetTalents(p)
@@ -89,13 +109,34 @@ export class Hud {
             if (e.target.closest('[data-continue]')) game.continueGame()
         }
         $('overlay').addEventListener('click', onOverlayClick)
-        $('credits').addEventListener('pointerdown', e => e.stopPropagation())
-        $('credits').addEventListener('click', () => $('creditsBanner').hidden = !$('creditsBanner').hidden)
+        // Info buttons open their box, taps on them and inside the box never reach the game
+        const keepFromGame = e => e.stopPropagation()
+        for (const [button, box] of [['credits', 'creditsBanner'], ['changes', 'changelog']]) {
+            const toggleBox = () => $(box).hidden = !$(box).hidden
+            $(button).addEventListener('pointerdown', keepFromGame)
+            $(box).addEventListener('pointerdown', keepFromGame)
+            $(button).addEventListener('click', toggleBox)
+            $(box).querySelector('.close')?.addEventListener('click', toggleBox)
+        }
     }
 
     icon(item) {
-        const { x, y } = this.items.frames[item][0]
+        const { x, y } = this.items.frames[item.base ?? item][0]
         return `<i class="icon" style="background-position: -${x}px -${y}px"></i>`
+    }
+
+    // Puts the icon of an item into a hotbar slot when it changes
+    showIcon(slot, item) {
+        if (slot.dataset.icon === String(item)) return
+        slot.dataset.icon = item
+        slot.querySelector('canvas')?.remove()
+        if (item) slot.prepend(this.icons[item])
+    }
+
+    // Stats of a picked gear piece against the worn one, followed by a button that acts on it
+    details(p, item, label, attributes) {
+        const stats = typeof item === 'string' ? '' : compare(p, item)
+        return `<div class="compare"><div>${stats}</div><span class="button" ${attributes}>${label}</span></div>`
     }
 
     row(item, name, detail, attributes = '') {
@@ -106,23 +147,36 @@ export class Hud {
         return Object.entries(items).map(([item, n]) => `${n}${this.icon(item)}`).join(' ')
     }
 
+    // Worn gear, the pack with the picked piece compared, arrows to put in the quiver and the rest of the loot
     bagPanel(p) {
-        const rows = Object.keys(ITEMS).filter(item => p.bag[item]).map(item => {
-            if (!ITEMS[item].slot) return this.row(item, t(`item.${item}`), p.bag[item])
-            const worn = p.gear[ITEMS[item].slot] === item
-            return this.row(item, t(`item.${item}`), t(worn ? 'worn' : 'wear'), `data-gear="${item}" ${worn ? 'data-worn' : ''}`)
+        if (!p.pack.includes(this.picked)) this.picked = null
+        const worn = GEAR_SLOTS.filter(slot => p.gear[slot]).map(slot => this.row(p.gear[slot], itemName(p.gear[slot]), t(`slot.${slot}`), `data-slot="${slot}" data-worn`))
+        const pack = p.pack.map((item, i) => {
+            const picked = item === this.picked
+            const row = this.row(item, itemName(item), t(`slot.${ITEMS[item.base].slot}`), `data-pick="${i}" ${picked ? 'data-active' : ''}`)
+            return picked ? row + this.details(p, item, t('wear'), 'data-wear="1"') : row
         })
-        const stats = t('stats', { defense: stat(p, 'defense'), mana: stat(p, 'manaRegen'), stamina: stat(p, 'staminaRegen') })
-        return `<h2>${t('bag')}</h2>${rows.join('')}<p>${stats}</p>`
+        const ammo = Object.keys(ITEMS).filter(item => ITEMS[item].ammo && p.bag[item])
+            .map(item => this.row(item, t(`item.${item}`), p.bag[item], `data-quiver="${item}" ${item === p.quiver ? 'data-active' : ''}`))
+        const loot = Object.keys(ITEMS).filter(item => !ITEMS[item].ammo && item !== 'gold' && p.bag[item]).map(item => this.row(item, t(`item.${item}`), p.bag[item]))
+        const stats = t('stats', { defense: stat(p, 'defense'), mana: stat(p, 'manaRegen'), stamina: stat(p, 'staminaRegen'), crit: Math.round(stat(p, 'crit') * 100), warmth: stat(p, 'warmth') })
+        return `<h2>${t('bag')}</h2>${worn.join('')}<h3>${t('pack')} <em>${p.pack.length}/${PACK_SIZE}</em></h3>${pack.join('') || `<p>${t('packEmpty')}</p>`}` +
+            `<h3>${t('quiver')}</h3>${ammo.join('')}<h3>${t('loot')}</h3>${loot.join('')}<p>${stats}</p><p>${t('bagHint')}</p>`
     }
 
     shopPanel(p) {
         const offers = OFFERS.map((offer, i) => {
             const name = t(`item.${offer.item}`) + (offer.count > 1 ? ` x${offer.count}` : '')
-            return this.row(offer.item, name, this.cost(offer.cost), `data-offer="${i}" ${canBuy(p, offer) ? '' : 'data-off'}`)
+            const off = canBuy(p, offer) ? '' : 'data-off'
+            const picked = i === this.offer
+            const row = this.row(offer.item, name, this.cost(offer.cost), `data-offer="${i}" ${picked ? 'data-active' : off}`)
+            return picked ? row + this.details(p, ITEMS[offer.item].slot ? createItem(offer.item) : offer.item, t('purchase'), `data-purchase="1" ${off}`) : row
         })
-        const sales = Object.keys(ITEMS).filter(item => ITEMS[item].value && p.bag[item])
-            .map(item => this.row(item, `${t(`item.${item}`)} x${p.bag[item]}`, `+${this.cost({ gold: ITEMS[item].value })}`, `data-sale="${item}"`))
+        const sales = [
+            ...Object.keys(ITEMS).filter(item => !ITEMS[item].slot && ITEMS[item].value && p.bag[item])
+                .map(item => this.row(item, `${t(`item.${item}`)} x${p.bag[item]}`, `+${this.cost({ gold: price(item) })}`, `data-sale="${item}"`)),
+            ...p.pack.map((item, i) => this.row(item, itemName(item), `+${this.cost({ gold: price(item) })}`, `data-gear-sale="${i}"`)),
+        ]
         const reset = `<div class="row" data-reset="1" ${canReset(p) ? '' : 'data-off'}><span>${t('resetTalents')}</span><em>${this.cost({ gold: resetCost(p) })}</em></div>`
         return `<h2>${t('merchant')}</h2><h3>${t('buy')} <em>${this.cost({ gold: p.bag.gold })}</em></h3>${offers.join('')}<h3>${t('sell')}</h3>${sales.join('') || `<p>${t('nothingToSell')}</p>`}<h3>${t('talents')}</h3>${reset}`
     }
@@ -157,21 +211,22 @@ export class Hud {
         $('mana').style.width = `${100 * p.mana / p.maxMana}%`
         $('hp').style.width = `${Math.max(0, 100 * p.hp / p.maxHp)}%`
         $('stamina').style.width = `${p.stamina}%`
+        // Weapon slots show the worn weapon, the bow and potion slots how many arrows of the quiver kind and potions are left
         this.slots.forEach((slot, i) => {
             const item = SLOTS[i]
+            this.showIcon(slot, p.gear[item]?.base ?? item)
             slot.classList.toggle('selected', i === p.slot)
             slot.classList.toggle('disabled', Boolean(item) && !canUse(p, item))
-            if (COUNTED[item]) slot.querySelector('b').textContent = p.bag[COUNTED[item]]
+            slot.querySelector('b').textContent = { bow: p.bag[p.quiver], potion: p.bag.potion }[item] ?? ''
         })
-        for (const { item, elements } of this.skills) for (const element of elements) element.classList.toggle('disabled', !canUse(p, item ?? p.skill))
-        // The talent tree skill swaps its icon and touch label when picked, a dark cover shrinks while it cools down
-        const { slot, elements } = this.skills.at(-1)
-        if (this.skill !== p.skill + language()) {
-            this.skill = p.skill + language()
-            slot.querySelector('canvas')?.remove()
-            if (p.skill) slot.prepend(this.icons[p.skill])
-            $('skill').textContent = p.skill ? t(`skill.${p.skill}`) : ''
+        for (const { item, slot, elements } of this.skills) {
+            this.showIcon(slot, item ?? p.skill)
+            for (const element of elements) element.classList.toggle('disabled', !canUse(p, item ?? p.skill))
         }
+        // The talent tree skill swaps its touch label when picked, a dark cover shrinks while it cools down
+        const { elements } = this.skills.at(-1)
+        const label = p.skill ? t(`skill.${p.skill}`) : ''
+        if ($('skill').textContent !== label) $('skill').textContent = label
         for (const element of elements) {
             element.hidden = !p.skill
             element.style.setProperty('--cooldown', `${p.skill ? 100 * Math.max(0, p.skillT) / COOLDOWNS[p.skill] : 0}%`)
@@ -180,8 +235,10 @@ export class Hud {
         const foes = game.foes()
         const exit = game.cleared() && game.level < LEVELS.length - 1
         const goal = exit ? t('cleared') : t('foes', { killed: foes.filter(e => e.hp <= 0).length, total: foes.length })
-        const talentPoints = points(p) > 0 ? [t('talentPoints', { points: points(p) })] : []
-        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('level', { level: p.level }), ...talentPoints, t('gold', { gold: p.bag.gold })].join(' | ')
+        $('counter').textContent = [t(`stage.${game.stage.theme}`), goal, t('level', { level: p.level }), t('gold', { gold: p.bag.gold })].join(' | ')
+        // Unspent talent points pulse over the bars until they are spent, a tap opens the tree
+        $('talentAlert').hidden = !points(p) || game.panel === 'talents'
+        $('talentAlert').textContent = `${touch ? '' : 'T - '}${t('talentPoints', { points: points(p) })}`
         $('quests').innerHTML = game.quests.filter(quest => quest.state === 'taken').map(quest => `<p>${questName(quest)} ${progress(game, quest)}/${quest.count}</p>`).join('')
         $('fps').textContent = game.dev ? `${fps} FPS ${drawCalls} DC` : `${fps} FPS`
         const boss = game.state === 'play' && game.enemies.find(e => TYPES[e.type].boss && e.hp > 0 && Math.abs(e.x - p.x) < TYPES[e.type].engage)

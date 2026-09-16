@@ -6,6 +6,8 @@ export const STATUSES = {
     bleed: { stacks: 5, damage: 2 },
     burn: { stacks: 3, damage: 4 },
     root: { stacks: 1 },
+    // Raised damage after a kill, given by the Chief's Crown
+    frenzy: { stacks: 1 },
 }
 
 const TICK = 0.5

@@ -36,6 +36,16 @@
     #credits { position: absolute; right: 8px; bottom: 6px; width: 12px; height: 12px; line-height: 12px; text-align: center; font-size: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
     #creditsBanner { position: absolute; right: 8px; top: 22px; max-width: 200px; padding: 4px 6px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; text-align: right; user-select: text; -webkit-user-select: text; }
     #creditsBanner a { color: inherit; }
+    #changes { position: absolute; left: 8px; bottom: 6px; height: 12px; padding: 0 4px; line-height: 12px; font-size: 8px; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
+    /* Barely see-through background: Chrome skipped drawing the game canvas above a fully opaque scrolling box */
+    #changelog { position: absolute; left: 8px; bottom: 24px; width: 240px; max-height: 70%; overflow-y: auto; touch-action: pan-y; padding: 8px; font-size: 8px; background: #2e170cfe; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
+    #changelog h2 { margin: 0 0 4px; font-size: 16px; font-weight: normal; color: #ffe9a8; }
+    #changelog h3 { margin: 6px 0 2px; font-size: 8px; font-weight: normal; color: #ffe9a8; }
+    #changelog p { margin: 0; color: #c9b08a; }
+    #panel, #changelog { scrollbar-width: thin; scrollbar-color: #6b3d22 #140a05; }
+    #panel::-webkit-scrollbar, #changelog::-webkit-scrollbar { width: 4px; }
+    #panel::-webkit-scrollbar-track, #changelog::-webkit-scrollbar-track { background: #140a05; }
+    #panel::-webkit-scrollbar-thumb, #changelog::-webkit-scrollbar-thumb { background: #6b3d22; }
     .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
     .popup b { font-size: 16px; }
 
@@ -50,6 +60,8 @@
     #boss .bar { height: 6px; margin-top: 3px; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
     #stamina { --fill: #f0c419; --light: #ffe36a; --dark: #b08a0c; }
 
+    #talentAlert { position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; padding: 2px 5px; font-size: 8px; color: #ffe9a8; text-shadow: 1px 1px 0 #000; background: #2e170c; box-shadow: 0 0 0 1px #f0b46a, 0 0 0 2px #140a05; cursor: pointer; animation: pulse 0.8s ease-in-out infinite alternate; }
+    @keyframes pulse { to { box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; color: #c9b08a; } }
     #slots { display: flex; gap: 4px; }
     .slot { position: relative; width: 34px; height: 34px; background: #1d0e06; box-shadow: inset 0 0 0 1px #4a2814, inset 2px 2px #120803; }
     .slot.selected { background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a, inset 0 0 0 2px #7a4a22; }
@@ -66,7 +78,7 @@
     #overlay [data-active] { color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8; }
     #stage.loading > :not(#overlay) { visibility: hidden; }
 
-    #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 260px; padding: 10px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
+    #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 260px; max-height: 75%; overflow-y: auto; touch-action: pan-y; padding: 10px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
     #panel h2, #panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 16px; font-weight: normal; color: #ffe9a8; }
     #panel h3 { margin: 8px 0 2px; font-size: 8px; }
     #panel h2 em { margin-right: 16px; }
@@ -77,7 +89,12 @@
     #panel em { display: flex; align-items: center; gap: 2px; font-style: normal; }
     #panel [data-off] { opacity: 0.4; }
     #panel [data-worn] em, #panel [data-done] em { color: #b8f5a0; }
-    #panel .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
+    #panel .compare { display: flex; align-items: flex-end; gap: 6px; padding: 3px 4px 4px 26px; background: #241208; box-shadow: inset 2px 0 #2f4a1c; }
+    #panel .compare div { flex: 1; }
+    #panel .compare p { margin: 0; }
+    #panel .button { padding: 3px 10px; color: #ffe9a8; background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a; cursor: pointer; }
+    #panel .button:hover { background: #6b3d22; }
+    #panel .close, #changelog .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
     .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); image-rendering: pixelated; }
     #panel .tree { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
     #panel .talent { height: 18px; margin-bottom: 3px; padding: 2px 3px; line-height: 9px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
@@ -89,7 +106,7 @@
 
     #stage.photo #counter, #stage.photo #quests, #stage.photo #fps, #stage.photo #version,
     #stage.photo #hud, #stage.photo #touch, #stage.photo #boss, #stage.photo #popups,
-    #stage.photo #credits, #stage.photo #creditsBanner { display: none; }
+    #stage.photo #credits, #stage.photo #creditsBanner, #stage.photo #changes, #stage.photo #changelog { display: none; }
 
     #touch, #rotate { display: none; }
     #touch div { position: absolute; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 8px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
@@ -124,6 +141,7 @@
         <div class="bar"><i id="stamina"></i></div>
       </div>
       <div id="slots"></div>
+      <div id="talentAlert" data-key="KeyT" hidden></div>
     </div>
     <div id="overlay"><h1 data-text="title"></h1><p data-text="loading"></p></div>
     <div id="panel" hidden></div>
@@ -140,6 +158,20 @@
       <div data-key="KeyT" style="left: 12px; bottom: 120px" data-text="btnTalents"></div>
       <div id="skill" data-key="KeyQ" style="right: 112px; bottom: 20px" hidden></div>
       <div id="fullscreen" data-key="KeyF" data-text="btnFullscreen"></div>
+    </div>
+    <div id="changes">CHANGELOG</div>
+    <div id="changelog" hidden>
+      <div class="close">X</div>
+      <h2>CHANGELOG</h2>
+      <h3>v0.0.9 - Arsenal</h3><p>Axe, spear, daggers, frost staff and short bow. Ice, fire and piercing arrows. Gear rarity with random bonuses, legendary Alpha Fang and Chief's Crown. Gloves, boots, ring and amulet slots. Item comparison. New foes: mimic, looter, snow lynx, poacher.</p>
+      <h3>v0.0.8 - Talents</h3><p>Talent tree with Warrior, Hunter and Frost branches and active skills. Random enemy spawns, area levels, bleeding, burning and other status effects.</p>
+      <h3>v0.0.7 - Saves</h3><p>Progress saved in the browser with continue, run summary, first-time tips, photo mode and credits.</p>
+      <h3>v0.0.6 - Lore</h3><p>Story scenes, experience and leveling up, hit sounds, particles and screen shake.</p>
+      <h3>v0.0.5 - World</h3><p>Winter Forest, Ice Cave and Castle Ruins. Slippery ice, falling icicles, chests and quests.</p>
+      <h3>v0.0.4 - Battle</h3><p>Archers, shamans, the Alpha Wolf boss and mana skills: frost strike and ice shield.</p>
+      <h3>v0.0.3 - Loot</h3><p>Enemy loot, inventory with gear, bow and arrows, merchant.</p>
+      <h3>v0.0.2 - Mobile</h3><p>Touch controls for phones.</p>
+      <h3>v0.0.1</h3><p>First playable version.</p>
     </div>
   </div>
   <div id="rotate" data-text="rotate"></div>

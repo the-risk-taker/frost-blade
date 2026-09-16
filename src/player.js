@@ -3,21 +3,20 @@ import { input } from './input.js'
 import { sfx } from './sound.js'
 import { TYPES, hurtEnemy } from './enemies.js'
 import { stat, updateStats, noTalents } from './talents.js'
+import { ITEMS, GEAR_SLOTS, createItem, worn } from './items.js'
 import { onIce, areaScale } from './levels.js'
 import { afflict, has, tickStatuses } from './status.js'
 import { t } from './lang.js'
 
-export const SLOTS = ['sword', 'bow', 'frost', 'potion']
+export const SLOTS = ['weapon', 'bow', 'frost', 'potion']
 // Mana skills have their own keys, touch screens have buttons for them.
 // The skill picked in the talent tree has one more key and cools down after use.
 export const SKILLS = { KeyX: 'freeze', KeyC: 'shield' }
 export const SKILL_KEY = 'KeyQ'
 export const COOLDOWNS = { whirl: 6, volley: 8, nova: 10 }
-export const ATTACK_TIME = 0.3
 export const ROLL_TIME = 0.35
 export const WHIRL_TIME = 0.5
 export const WHIRL_REACH = 48
-export const BOW_CHARGE = 0.7
 export const XP_PER_LEVEL = 100
 
 const SPEED = 125
@@ -26,6 +25,7 @@ const GRAVITY = 960
 const ARROW_GRAVITY = 520
 const ROLL_SPEED = 250
 const NOVA_REACH = 100
+const STAFF_CHARGE = 0.8
 const JUMP_KEYS = ['ArrowUp', 'KeyW']
 const USE_KEYS = ['Space', 'KeyJ', 'Mouse0']
 
@@ -34,15 +34,15 @@ export function createPlayer() {
         x: 80, y: GROUND, vx: 0, vy: 0, dir: 1, onGround: true, walk: 0,
         hp: 100, maxHp: 100, mana: 100, maxMana: 100, stamina: 100, restT: 0,
         xp: 0, level: 1, power: 0, talents: noTalents(), skill: null, resets: 0,
-        slot: 0, cooldown: 0, skillT: 0,
-        bag: { gold: 10, arrows: 10, potion: 3 },
-        gear: { head: null, body: null, back: null },
-        attackT: -1, chill: false, hitSet: new Set(), rollT: -1, whirlT: -1, hurtT: 0, drawT: -1, shieldT: 0, statuses: {},
+        slot: 0, cooldown: 0, skillT: 0, hits: 0, pity: 0,
+        bag: { gold: 10, arrows: 10, potion: 3 }, quiver: 'arrows', pack: [],
+        gear: { ...Object.fromEntries(GEAR_SLOTS.map(slot => [slot, null])), weapon: createItem('sword'), bow: createItem('bow') },
+        attackT: -1, attackTime: 0, chill: false, hitSet: new Set(), rollT: -1, whirlT: -1, hurtT: 0, drawT: -1, shieldT: 0, statuses: {},
     }
 }
 
 // What the hero keeps between stages and sessions, everything else starts fresh
-export const carried = hero => structuredClone(Object.fromEntries(['bag', 'gear', 'xp', 'level', 'talents', 'skill', 'resets'].map(key => [key, hero[key]])))
+export const carried = hero => structuredClone(Object.fromEntries(['bag', 'pack', 'gear', 'quiver', 'xp', 'level', 'talents', 'skill', 'resets', 'pity'].map(key => [key, hero[key]])))
 
 // Kills grant XP. Filling the bar levels the hero up: a talent point and a bit more health, mana and power.
 export function addXp(p, amount, game) {
@@ -68,16 +68,18 @@ function hint(game, key) {
 export function canUse(p, item) {
     const ready = p.skillT <= 0
     return {
-        sword: p.stamina >= 12, bow: p.bag.arrows > 0, frost: p.mana >= 25, freeze: p.mana >= 30, shield: p.mana >= 40 && p.shieldT <= 0, potion: p.bag.potion > 0,
-        whirl: ready && p.stamina >= 25, volley: ready && p.bag.arrows > 0, nova: ready && p.mana >= 40,
+        weapon: p.stamina >= worn(p, 'weapon').stamina, bow: p.bag[p.quiver] > 0, frost: p.mana >= 25, freeze: p.mana >= 30, shield: p.mana >= 40 && p.shieldT <= 0, potion: p.bag.potion > 0,
+        whirl: ready && p.stamina >= 25, volley: ready && p.bag[p.quiver] > 0, nova: ready && p.mana >= 40,
     }[item]
 }
 
+// How far the bow is drawn or the staff charged, from 0 to 1
+export const charge = p => Math.min(1, p.drawT / (SLOTS[p.slot] === 'bow' ? worn(p, 'bow').draw : STAFF_CHARGE))
+
 // Arrow leaving the bow. The longer the string is drawn, the faster and farther it flies.
 export function aimArrow(p) {
-    const charge = Math.min(1, p.drawT / BOW_CHARGE)
-    const speed = 180 + 340 * charge
-    return { x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * speed, vy: -speed * 0.3, damage: Math.round(8 + 16 * charge) + p.power }
+    const speed = 180 + 340 * charge(p)
+    return { x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * speed, vy: -speed * 0.3, damage: Math.round((8 + 16 * charge(p)) * worn(p, 'bow').might) + p.power, ammo: p.quiver }
 }
 
 export function flyArrow(a, dt) {
@@ -86,13 +88,33 @@ export function flyArrow(a, dt) {
     a.y += a.vy * dt
 }
 
-// Every blow of the hero lands here: talents add critical hits, life stolen in melee and mana for kills
+// Every blow of the hero lands here: talents and gear add critical hits, life stolen in melee and mana for kills.
+// Legendary gear calls a spirit wolf every few hits and raises damage for a while after a kill.
 export function strike(p, e, damage, dir, game, statuses = {}, melee = false) {
     const crit = game.random() < stat(p, 'crit')
-    hurtEnemy(e, crit ? damage * 2 : damage, dir, game, statuses)
+    const dealt = Math.round(damage * (crit ? 2 : 1) * (has(p, 'frenzy') ? 1 + stat(p, 'frenzy') : 1))
+    hurtEnemy(e, dealt, dir, game, statuses)
     if (crit) game.popup(e.x, e.y - TYPES[e.type].height - 30, t('crit'), '#ff9a3c')
-    if (melee) p.hp = Math.min(p.maxHp, p.hp + damage * stat(p, 'lifesteal'))
-    if (e.hp <= 0 && !TYPES[e.type].prop) p.mana = Math.min(p.maxMana, p.mana + stat(p, 'killMana'))
+    if (melee) p.hp = Math.min(p.maxHp, p.hp + dealt * stat(p, 'lifesteal'))
+    if (stat(p, 'wolf') && ++p.hits % stat(p, 'wolf') === 0) game.spirits.push({ x: p.x, dir: Math.sign(e.x - p.x) || p.dir, life: 1, hitSet: new Set() })
+    if (e.hp > 0 || TYPES[e.type].prop) return
+    p.mana = Math.min(p.maxMana, p.mana + stat(p, 'killMana'))
+    if (stat(p, 'frenzy')) afflict(p, 'frenzy', 4)
+}
+
+// A bolt from the frost slot, a charged one blasts every foe around the place it hits
+function castBolt(p, game, power) {
+    p.cooldown = 0.35
+    game.bolts.push({ x: p.x + p.dir * 14, y: p.y - 22, vx: p.dir * 340, life: 1.2, damage: Math.round((18 + p.power + stat(p, 'spell')) * (1 + power)), radius: power * 60 })
+    sfx.cast()
+}
+
+// An empty quiver switches to another kind of arrows, or back to the weapon when none are left
+function refill(p) {
+    if (p.bag[p.quiver]) return
+    const ammo = Object.keys(ITEMS).find(item => ITEMS[item].ammo && p.bag[item])
+    if (ammo) p.quiver = ammo
+    else p.slot = SLOTS.indexOf('weapon')
 }
 
 // Health loss from any source, the hero falls when it runs out. God mode from the dev panel ignores it.
@@ -132,7 +154,7 @@ export function hurtPlayer(p, damage, dir, game, statuses = {}) {
 function useItem(p, item, game) {
     if (!item || !canUse(p, item) || p.cooldown > 0 || p.attackT >= 0 || p.drawT >= 0 || p.whirlT >= 0) return
     if (COOLDOWNS[item]) p.skillT = COOLDOWNS[item]
-    if (item === 'sword' || item === 'freeze') {
+    if (item === 'weapon' || item === 'freeze') {
         // The freezing strike is a sword swing paid with mana
         p.chill = item === 'freeze'
         if (p.chill) {
@@ -141,10 +163,11 @@ function useItem(p, item, game) {
             sfx.cast()
             hint(game, 'Freeze')
         } else {
-            p.stamina -= 12
+            p.stamina -= worn(p, 'weapon').stamina
             p.restT = 0.6
         }
         p.attackT = 0
+        p.attackTime = worn(p, 'weapon').time / (1 + stat(p, 'attackSpeed'))
         p.hitSet.clear()
         sfx.swing()
     } else if (item === 'bow') {
@@ -152,9 +175,13 @@ function useItem(p, item, game) {
         hint(game, 'Bow')
     } else if (item === 'frost') {
         p.mana -= 25
-        p.cooldown = 0.35
-        game.bolts.push({ x: p.x + p.dir * 14, y: p.y - 22, vx: p.dir * 340, life: 1.2, damage: 18 + p.power + stat(p, 'spell') })
-        sfx.cast()
+        // A staff charges the bolt while the use key is held, like drawing a bow
+        if (worn(p, 'weapon').charged) {
+            p.drawT = 0
+            hint(game, 'Staff')
+        } else {
+            castBolt(p, game, 0)
+        }
     } else if (item === 'shield') {
         p.mana -= 40
         p.shieldT = 6
@@ -177,18 +204,20 @@ function useItem(p, item, game) {
         sfx.swing()
     } else if (item === 'volley') {
         // Up to five arrows rain down on the ground ahead, one after another
-        const count = Math.min(5, p.bag.arrows)
-        p.bag.arrows -= count
-        for (let i = 0; i < count; i++) game.shots.push({ x: p.x + p.dir * (40 + i * 25), y: -40 - i * 30, vx: p.dir * 40, vy: 250, damage: 12 + p.power, life: 3 })
+        const count = Math.min(5, p.bag[p.quiver])
+        for (let i = 0; i < count; i++) game.shots.push({ x: p.x + p.dir * (40 + i * 25), y: -40 - i * 30, vx: p.dir * 40, vy: 250, damage: 12 + p.power, ammo: p.quiver, life: 3, hitSet: new Set() })
+        p.bag[p.quiver] -= count
+        refill(p)
         sfx.shoot()
     } else if (item === 'nova') {
         p.mana -= 40
-        for (const e of game.enemies) if (e.hp > 0 && Math.abs(e.x - p.x) < NOVA_REACH) strike(p, e, 14 + p.power + stat(p, 'spell'), Math.sign(e.x - p.x) || 1, game, { freeze: 2.5 })
+        const wide = 1 + (worn(p, 'weapon').nova ?? 0)
+        for (const e of game.enemies) if (e.hp > 0 && Math.abs(e.x - p.x) < NOVA_REACH * wide) strike(p, e, 14 + p.power + stat(p, 'spell'), Math.sign(e.x - p.x) || 1, game, { freeze: 2.5 })
         for (let i = 0; i < 48; i++) {
             const a = i / 48 * Math.PI * 2
-            game.particles.push({ x: p.x, y: p.y - 16, vx: Math.cos(a) * 260, vy: Math.sin(a) * 80, life: 0.35, color: '#bff0ff', size: 2, gravity: 0 })
+            game.particles.push({ x: p.x, y: p.y - 16, vx: Math.cos(a) * 260 * wide, vy: Math.sin(a) * 80, life: 0.35, color: '#bff0ff', size: 2, gravity: 0 })
         }
-        game.flash(p.x, p.y - 18, '#8fdcff', 160)
+        game.flash(p.x, p.y - 18, '#8fdcff', 160 * wide)
         sfx.shatter()
     }
 }
@@ -204,9 +233,10 @@ export function updatePlayer(p, dt, game) {
     const dot = tickStatuses(p, dt)
     if (dot) loseHp(p, dot, game)
 
+    const slot = p.slot
     for (let i = 0; i < 9; i++) if (input.hit('Digit' + (i + 1))) p.slot = i
     p.slot = (((p.slot + input.takeWheel()) % 9) + 9) % 9
-    if (SLOTS[p.slot] !== 'bow') p.drawT = -1
+    if (p.slot !== slot) p.drawT = -1
 
     const move = input.held('KeyD', 'ArrowRight') - input.held('KeyA', 'ArrowLeft')
     // A frozen hero can't act at all, a rooted one can't move but still fights
@@ -219,9 +249,9 @@ export function updatePlayer(p, dt, game) {
         // With the ice trail talent the roll leaves frost behind
         if (stat(p, 'trail') && Math.abs((game.trails.at(-1)?.x ?? -100) - p.x) > 8) game.trails.push({ x: p.x, life: 3 })
     } else {
-        const target = stunned || rooted || (p.attackT >= 0 && p.onGround) || p.drawT >= 0 ? 0 : move * SPEED * (has(p, 'slow') ? 0.6 : 1)
-        // Ice gives little grip, so the hero slides when he starts and stops
-        p.vx += (target - p.vx) * Math.min(1, dt * (stunned ? 3 : p.onGround && onIce(game.stage, p.x) ? 1.5 : 14))
+        const target = stunned || rooted || (p.attackT >= 0 && p.onGround) || p.drawT >= 0 ? 0 : move * SPEED * (1 + stat(p, 'speed')) * (has(p, 'slow') ? 0.6 : 1)
+        // Ice gives little grip, so the hero slides when he starts and stops. Good boots grip better.
+        p.vx += (target - p.vx) * Math.min(1, dt * (stunned ? 3 : p.onGround && onIce(game.stage, p.x) ? 1.5 + stat(p, 'grip') : 14))
         if (!stunned) {
             if (move && p.attackT < 0) p.dir = move
             if (input.hit(...JUMP_KEYS) && p.onGround && !rooted) {
@@ -247,15 +277,18 @@ export function updatePlayer(p, dt, game) {
 
     if (p.attackT >= 0) {
         p.attackT += dt
-        if (p.attackT > 0.06 && p.attackT < 0.2) {
-            const reach = p.x + p.dir * 16
+        const swing = p.attackT / p.attackTime
+        if (swing > 0.2 && swing < 0.67) {
+            const weapon = worn(p, 'weapon')
             for (const e of game.enemies) {
-                if (e.hp <= 0 || p.hitSet.has(e) || Math.abs(e.x - reach) > 30 || p.y < e.y - TYPES[e.type].height) continue
+                const ahead = (e.x - p.x) * p.dir
+                if (e.hp <= 0 || p.hitSet.has(e) || ahead < -14 || ahead > weapon.reach || p.y < e.y - TYPES[e.type].height) continue
                 p.hitSet.add(e)
-                strike(p, e, 14 + p.power, p.dir, game, p.chill ? { freeze: 1.6 } : {}, true)
+                // Pushing weapons knock foes back farther
+                strike(p, e, weapon.damage + p.power, p.dir * (1 + (weapon.push ?? 0)), game, { ...weapon.statuses, ...(p.chill && { freeze: 1.6 }) }, true)
             }
         }
-        if (p.attackT > ATTACK_TIME) p.attackT = -1
+        if (swing > 1) p.attackT = -1
     }
 
     // The blade whirl cuts everything around once and leaves it bleeding
@@ -271,16 +304,20 @@ export function updatePlayer(p, dt, game) {
         if (p.whirlT > WHIRL_TIME) p.whirlT = -1
     }
 
-    // The bow is drawn while the use key is held and shoots on release
+    // The bow is drawn, or the staff charged, while the use key is held and shoots on release
     if (p.drawT >= 0) {
         p.drawT += dt
         if (!input.held(...USE_KEYS)) {
-            game.shots.push({ ...aimArrow(p), life: 3 })
-            p.bag.arrows--
-            if (!p.bag.arrows) p.slot = SLOTS.indexOf('sword')
-            p.cooldown = 0.3
+            if (SLOTS[p.slot] === 'bow') {
+                game.shots.push({ ...aimArrow(p), life: 3, hitSet: new Set() })
+                p.bag[p.quiver]--
+                refill(p)
+                p.cooldown = 0.3
+                sfx.shoot()
+            } else {
+                castBolt(p, game, charge(p))
+            }
             p.drawT = -1
-            sfx.shoot()
         }
     }
 

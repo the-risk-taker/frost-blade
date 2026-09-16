@@ -1,10 +1,13 @@
-import { GROUND, LEVEL_W } from './const.js'
+import { GROUND, H, LEVEL_W, view } from './const.js'
 import { sfx } from './sound.js'
 import { hurtPlayer, addXp } from './player.js'
 import { onIce, areaScale } from './levels.js'
 import { afflict, has, tickStatuses } from './status.js'
+import { rollGear, rollUnique } from './items.js'
 
 const GRAVITY = 960
+// Where lurking foes wait, out of reach of every attack
+const HIDDEN = -1000
 
 function smash(damage) {
     return (e, game) => {
@@ -27,14 +30,34 @@ function lunge(e) {
 function bite(damage, reach) {
     return (e, game) => {
         const p = game.player
-        if (e.struck || Math.abs(p.x - e.x) > reach || p.y < e.y - TYPES[e.type].height) return
+        if (e.struck || Math.abs(p.x - e.x) > reach || p.y < e.y - TYPES[e.type].height || e.y < p.y - 34) return
         e.struck = hurtPlayer(p, damage, e.dir, game)
     }
 }
 
 function shoot(e, game) {
-    game.arrows.push({ x: e.x + e.dir * 14, y: e.y - 21, vx: e.dir * 260, life: 2 })
+    game.arrows.push({ x: e.x + e.dir * 14, y: e.y - 21, vx: e.dir * 260, life: 2, damage: 10 })
     sfx.shoot()
+}
+
+// A thrown net barely hurts but holds the hero in place
+function throwNet(e, game) {
+    game.arrows.push({ x: e.x + e.dir * 10, y: e.y - 20, vx: e.dir * 190, life: 2, damage: 4, statuses: { root: 2 }, net: true })
+    sfx.shoot()
+}
+
+// A lurking lynx leaps down from the top of the screen right in front of the hero
+const POUNCE = { attack: 1.1, recover: 0.5, during: bite(18, 22) }
+
+function pounce(e, game) {
+    const p = game.player
+    e.x = p.x + p.dir * 40
+    e.y = H - view.h - 30
+    e.dir = -p.dir
+    e.vx = e.dir * 30
+    e.pattern = POUNCE
+    setState(e, 'attack')
+    sfx.lunge()
 }
 
 // The icicle falls where the hero stood when the spell was cast
@@ -80,6 +103,7 @@ function alphaPattern(e, game) {
 // Enemies with choose() pick one of their attack patterns before winding up.
 // Props like chests stand still, break when hit and don't count as foes.
 // Cost is the difficulty paid from a spawn budget, types without it never come from random pools.
+// Mimics look like chests until the hero comes close, looters steal loot lying around, lynxes lurk out of sight.
 export const TYPES = {
     ogre: { hp: 60, cost: 3, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, blood: '#8f6446', strike: smash(20) },
     chief: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, boss: true, blood: '#8f6446', strike: smash(30) },
@@ -88,17 +112,25 @@ export const TYPES = {
     shaman: { hp: 30, cost: 2, speed: 45, stride: 8, height: 42, engage: 320, reach: 260, keepAway: 150, windup: 0.9, attack: 0.2, recover: 1.4, knockback: 150, blood: '#4a74a0', strike: icicle },
     alpha: { hp: 260, speed: 80, stride: 12, height: 40, engage: 360, reach: 220, knockback: 40, heavy: true, boss: true, blood: '#3b444c', choose: alphaPattern },
     chest: { hp: 10, speed: 0, stride: 0, height: 16, engage: 0, reach: 0, knockback: 0, heavy: true, prop: true, blood: '#8a5a2b' },
+    mimic: { hp: 50, cost: 2, speed: 70, stride: 12, height: 18, engage: 70, reach: 26, windup: 0.3, attack: 0.3, recover: 0.6, knockback: 60, blood: '#8a5a2b', strike: sfx.lunge, during: bite(14, 26) },
+    looter: { hp: 26, cost: 1, speed: 95, stride: 12, height: 32, engage: 360, reach: 24, windup: 0.3, attack: 0.2, recover: 0.5, knockback: 150, blood: '#5d8a3a', steals: true, strike: sfx.swing, during: bite(6, 26) },
+    lynx: { hp: 34, cost: 2, speed: 115, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.35, attack: 0.45, recover: 0.5, knockback: 150, blood: '#b08a5a', lurks: true, strike: lunge, during: bite(14, 20) },
+    poacher: { hp: 30, cost: 2, speed: 55, stride: 10, height: 34, engage: 320, reach: 200, keepAway: 90, windup: 0.7, attack: 0.15, recover: 1.2, knockback: 150, blood: '#8f6446', strike: throwNet },
 }
 
-// Loot table: [item, chance, count]
+// Loot table: [item, chance, count]. Gear is rolled at random, uniques come from bosses and mimics.
 const LOOT = {
-    ogre: [['gold', 1, 10], ['potion', 0.6, 1]],
-    chief: [['gold', 1, 40]],
+    ogre: [['gold', 1, 10], ['potion', 0.6, 1], ['gear', 0.15]],
+    chief: [['gold', 1, 40], ['gear', 1], ['unique', 0.5]],
     wolf: [['fur', 0.7, 1], ['fang', 0.6, 1], ['gold', 0.5, 2]],
-    archer: [['arrows', 0.8, 4], ['gold', 1, 3]],
-    shaman: [['potion', 0.3, 1], ['gold', 1, 5]],
-    alpha: [['gold', 1, 60], ['fur', 1, 3], ['fang', 1, 3]],
-    chest: [['gold', 1, 8], ['potion', 0.4, 1], ['arrows', 0.5, 5]],
+    archer: [['arrows', 0.8, 4], ['gold', 1, 3], ['gear', 0.08]],
+    shaman: [['potion', 0.3, 1], ['gold', 1, 5], ['gear', 0.1]],
+    alpha: [['gold', 1, 60], ['fur', 1, 3], ['fang', 1, 3], ['gear', 1], ['unique', 0.5]],
+    chest: [['gold', 1, 8], ['potion', 0.4, 1], ['arrows', 0.5, 5], ['gear', 0.3]],
+    mimic: [['gold', 1, 25], ['gear', 1], ['unique', 0.15]],
+    looter: [['gold', 1, 12]],
+    lynx: [['fur', 1, 2], ['fang', 0.5, 1]],
+    poacher: [['fireArrows', 0.4, 4], ['iceArrows', 0.4, 4], ['gold', 1, 6]],
 }
 
 // Draws weighted random foes from a stage pool until their costs use up the budget
@@ -111,8 +143,9 @@ export function rollGroup(pool, budget, random) {
 }
 
 export function createEnemy(type, x, stage) {
-    const hp = Math.round(TYPES[type].hp * areaScale(stage))
-    return { type, x, y: GROUND, vx: 0, vy: 0, dir: -1, hp, maxHp: hp, state: 'idle', pattern: TYPES[type], t: 0, walk: 0, flashT: 0, statuses: {}, cooldown: 0, deadT: 0, struck: false, howls: 0 }
+    const { hp: base, lurks } = TYPES[type]
+    const hp = Math.round(base * areaScale(stage))
+    return { type, x: lurks ? HIDDEN : x, home: x, y: GROUND, vx: 0, vy: 0, dir: -1, hp, maxHp: hp, state: lurks ? 'lurk' : 'idle', pattern: TYPES[type], t: 0, walk: 0, flashT: 0, statuses: {}, cooldown: 0, deadT: 0, struck: false, howls: 0, loot: [] }
 }
 
 function setState(e, state) {
@@ -121,7 +154,8 @@ function setState(e, state) {
     e.struck = false
 }
 
-// Health loss from any source. The last blow counts the kill, grants XP and drops loot, more of it in higher areas.
+// Health loss from any source. The last blow counts the kill, grants XP and drops loot, more and better in higher areas.
+// Whatever a looter stole falls out too.
 export function damageEnemy(e, damage, game) {
     const type = TYPES[e.type]
     e.hp -= damage
@@ -134,7 +168,11 @@ export function damageEnemy(e, damage, game) {
     sfx.smash()
     if (!type.prop) addXp(game.player, Math.round(e.maxHp / 2), game)
     const scale = areaScale(game.stage)
-    for (const [item, chance, count] of LOOT[e.type]) if (game.random() < chance) game.drop(e.x, e.y - type.height / 2, item, Math.floor(count * scale))
+    for (const [item, chance, count = 1] of LOOT[e.type]) {
+        const loot = item === 'unique' ? rollUnique(game.player, chance, game.random) : game.random() >= chance ? null : item === 'gear' ? rollGear(game.random, scale) : item
+        if (loot) game.drop(e.x, e.y - type.height / 2, loot, Math.floor(count * scale))
+    }
+    for (const q of e.loot) game.drop(e.x, e.y - type.height / 2, q.item, q.count)
 }
 
 // A blow with knockback and statuses given as { name: seconds }. Freezing only pauses the enemy, heavy ones thaw twice as fast.
@@ -154,6 +192,11 @@ export function hurtEnemy(e, damage, dir, game, statuses = {}) {
 
 export function updateEnemy(e, dt, game) {
     const type = TYPES[e.type]
+    // Roaming lynxes pounce as soon as they arrive
+    if (e.state === 'lurk') {
+        if (game.state === 'play' && (e.roaming || Math.abs(game.player.x - e.home) < 140)) pounce(e, game)
+        return
+    }
     const { pattern } = e
     e.flashT -= dt
     e.cooldown -= dt
@@ -189,12 +232,21 @@ export function updateEnemy(e, dt, game) {
             e.cooldown = 0.4
         }
     } else {
+        // Looters go for the closest loot on the ground and run from the hero once they carry some
+        const prize = type.steals && game.pickups.reduce((best, q) => !best || Math.abs(q.x - e.x) < Math.abs(best.x - e.x) ? q : best, null)
+        if (prize && Math.abs(prize.x - e.x) < 8) {
+            e.loot.push(prize)
+            game.pickups.splice(game.pickups.indexOf(prize), 1)
+            sfx.pickup()
+        }
         // Wandering groups know where the hero is from the moment they arrive
-        const dist = game.player.x - e.x
+        const dist = (prize?.x ?? game.player.x) - e.x
         const far = Math.abs(dist)
         const engaged = game.state === 'play' && (far < type.engage || e.roaming)
         if (engaged) e.dir = Math.sign(dist) || e.dir
-        const move = !engaged ? 0 : far > type.reach ? e.dir : far < (type.keepAway ?? 0) ? -e.dir : 0
+        const reach = prize ? 4 : type.reach
+        const keepAway = e.loot.length && !prize ? Infinity : type.keepAway ?? 0
+        const move = !engaged ? 0 : far < keepAway ? -e.dir : far > reach ? e.dir : 0
         if (engaged && !move && e.cooldown <= 0) {
             e.pattern = type.choose?.(e, game) ?? type
             setState(e, 'windup')

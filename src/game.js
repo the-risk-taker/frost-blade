@@ -1,7 +1,7 @@
 import { GROUND, LEVEL_W, view } from './const.js'
 import { input } from './input.js'
 import { sfx } from './sound.js'
-import { give } from './items.js'
+import { ITEMS, RARITIES, give, collect } from './items.js'
 import { t } from './lang.js'
 import { rng } from './pixels.js'
 import { LEVELS } from './levels.js'
@@ -64,6 +64,7 @@ export class Game {
         this.shots = []
         this.icicles = []
         this.trails = []
+        this.spirits = []
         this.pickups = []
         this.particles = []
         this.popups = []
@@ -155,6 +156,7 @@ export class Game {
         this.updateTraps(dt)
         this.updateIcicles(dt)
         this.updateTrails(dt)
+        this.updateSpirits(dt)
         this.updatePickups(dt)
         for (const q of this.particles) {
             q.vy += q.gravity * dt
@@ -197,13 +199,13 @@ export class Game {
             b.x += b.vx * dt
             b.life -= dt
             this.particles.push({ x: b.x, y: b.y + (this.random() - 0.5) * 4, vx: -b.vx * 0.1, vy: 0, life: 0.25, color: '#9fe6ff', size: 1, gravity: 0 })
-            const target = this.enemies.find(e => e.hp > 0 && Math.abs(e.x - b.x) < 16 && b.y > e.y - TYPES[e.type].height - 4)
-            if (target) {
-                strike(this.player, target, b.damage, Math.sign(b.vx), this, { slow: 2.5 })
-                this.burst(b.x, b.y, '#bff0ff', 14)
-                this.flash(b.x, b.y, '#8fdcff', 48)
-                b.life = 0
-            }
+            const touching = e => e.hp > 0 && Math.abs(e.x - b.x) < 16 && b.y > e.y - TYPES[e.type].height - 4
+            if (!this.enemies.some(touching)) continue
+            // A charged bolt blasts everyone within its radius
+            for (const e of this.enemies.filter(e => touching(e) || (e.hp > 0 && Math.abs(e.x - b.x) < b.radius))) strike(this.player, e, b.damage, Math.sign(e.x - b.x) || Math.sign(b.vx), this, { slow: 2.5 })
+            this.burst(b.x, b.y, '#bff0ff', 14 + b.radius)
+            this.flash(b.x, b.y, '#8fdcff', 48 + b.radius * 2)
+            b.life = 0
         }
         this.bolts = this.bolts.filter(b => b.life > 0)
     }
@@ -213,20 +215,25 @@ export class Game {
         for (const a of this.arrows) {
             a.x += a.vx * dt
             const touching = this.state === 'play' && Math.abs(p.x - a.x) < 8 && a.y > p.y - 34 && a.y < p.y
-            if (touching && hurtPlayer(p, 10, Math.sign(a.vx), this)) a.life = 0
+            if (touching && hurtPlayer(p, a.damage, Math.sign(a.vx), this, a.statuses)) a.life = 0
         }
         this.arrows = age(this.arrows, dt)
     }
 
-    // Arrows that hit may come back to the quiver with the arrow recovery talent
+    // Arrows that stop in a foe may come back to the quiver with the arrow recovery talent, piercing ones fly on
     updateShots(dt) {
         const p = this.player
         for (const s of this.shots) {
             flyArrow(s, dt)
-            const target = this.enemies.find(e => e.hp > 0 && Math.abs(e.x - s.x) < 12 && s.y > e.y - TYPES[e.type].height && s.y < e.y + 2)
+            const { statuses, pierce } = ITEMS[s.ammo].ammo
+            const trail = { iceArrows: '#9fe6ff', fireArrows: '#ff9a3c' }[s.ammo]
+            if (trail) this.particles.push({ x: s.x, y: s.y, vx: 0, vy: 0, life: 0.2, color: trail, size: 1, gravity: 0 })
+            const target = this.enemies.find(e => e.hp > 0 && !s.hitSet.has(e) && Math.abs(e.x - s.x) < 12 && s.y > e.y - TYPES[e.type].height && s.y < e.y + 2)
             if (target) {
-                strike(p, target, s.damage, Math.sign(s.vx), this)
-                if (this.random() < stat(p, 'recover')) give(p, 'arrows', 1)
+                strike(p, target, s.damage, Math.sign(s.vx), this, statuses)
+                s.hitSet.add(target)
+                if (pierce) continue
+                if (this.random() < stat(p, 'recover')) give(p, s.ammo, 1)
                 s.life = 0
             } else if (s.y >= GROUND) {
                 this.burst(s.x, GROUND, '#eef7fa', 5, 40)
@@ -276,10 +283,25 @@ export class Game {
         this.trails = age(this.trails, dt)
     }
 
-    // Loot falls to the ground, then flies to the hero when he walks close
+    // Spirit wolves called by the Alpha Fang run ahead and bite every foe on their way once
+    updateSpirits(dt) {
+        for (const s of this.spirits) {
+            s.x += s.dir * 320 * dt
+            for (const e of this.enemies) {
+                if (e.hp <= 0 || s.hitSet.has(e) || Math.abs(e.x - s.x) > 16) continue
+                s.hitSet.add(e)
+                hurtEnemy(e, 12 + this.player.power, s.dir, this, { bleed: 3 })
+            }
+        }
+        this.spirits = age(this.spirits, dt)
+    }
+
+    // Loot falls to the ground, then flies to the hero when he walks close. Gear stays on the ground while the pack is full.
     updatePickups(dt) {
         const p = this.player
         for (const q of this.pickups) {
+            // Gear better than common sparkles in the color of its rarity
+            if (q.item.rarity && this.random() < dt * 14) this.particles.push({ x: q.x + (this.random() - 0.5) * 12, y: q.y - 2, vx: 0, vy: -35, life: 0.6, color: RARITIES[q.item.rarity].color, size: 1 + (q.item.rarity > 2), gravity: 0 })
             q.t += dt
             q.vy += 900 * dt
             q.x += q.vx * dt
@@ -289,10 +311,14 @@ export class Game {
             if (this.state !== 'play' || q.t < 0.5 || Math.abs(dx) > 40) continue
             q.x += Math.sign(dx) * Math.min(Math.abs(dx), 160 * dt)
             if (Math.abs(dx) > 8) continue
-            give(p, q.item, q.count)
-            this.popup(q.x, q.y - 20, `+${q.count} ${t(`item.${q.item}`)}`, '#ffe9a8')
+            q.taken = collect(p, q.item, q.count)
+            if (!q.taken) {
+                if (!q.full) this.popup(q.x, q.y - 20, t('packFull'), '#ff6b5a')
+                q.full = true
+                continue
+            }
+            this.popup(q.x, q.y - 20, `+${q.count} ${t(`item.${q.item.base ?? q.item}`)}`, RARITIES[q.item.rarity]?.color ?? '#ffe9a8')
             sfx.pickup()
-            q.taken = true
         }
         this.pickups = this.pickups.filter(q => !q.taken)
     }
