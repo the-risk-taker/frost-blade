@@ -1,4 +1,4 @@
-import { GROUND, H, LEVEL_W, view } from './const.js'
+import { view } from './const.js'
 import { SLOTS, SKILLS, SKILL_KEY, COOLDOWNS, canUse } from './player.js'
 import { TYPES } from './enemies.js'
 import { ITEMS, OFFERS, GEAR_SLOTS, PACK_SIZE, PERCENT, RARITIES, bonuses, createItem, price, canBuy, buy, sell, equip, unequip } from './items.js'
@@ -6,11 +6,16 @@ import { TALENTS, stat, points, pickTalent, resetCost, canReset, resetTalents } 
 import { LEVELS } from './levels.js'
 import { progress, takeQuest } from './quests.js'
 import { LANGUAGES, language, languageName, setLanguage, t } from './lang.js'
-import { buildIcons, buildItems } from './sprites.js'
+import { buildItems, buildFrame, buildPortraits } from './sprites.js'
+import { buildBoards } from './art.js'
+import { TYPING } from './story.js'
+import { settings, saveSettings, QUALITIES, DIFFICULTIES } from './settings.js'
+import { makeCanvas } from './pixels.js'
 import { devPanel, devClick } from './dev.js'
 import { version } from '../package.json'
 
 const touch = matchMedia('(pointer: coarse)').matches
+const DRAW_BUDGET = 60
 
 // Stats where less is better, like the time of a swing
 const LOWER_BETTER = ['time', 'stamina', 'draw']
@@ -32,18 +37,32 @@ function compare(p, item) {
     return Object.keys({ ...now, ...next }).map(key => {
         const diff = (next[key] ?? 0) - (now[key] ?? 0)
         const better = diff > 0 !== LOWER_BETTER.includes(key)
-        return diff ? `<p style="color:${better ? '#b8f5a0' : '#ff6b5a'}">${statText(key, diff)}</p>` : ''
+        return diff ? `<p class="${better ? 'better' : 'worse'}">${statText(key, diff)}</p>` : ''
     }).join('')
 }
 
 const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 const summaryLine = game => t('summary', { time: formatTime(game.playTime), kills: game.totalKills, gold: game.player.bag.gold })
 
-function overlayLines(game) {
-    if (game.state === 'travel') {
-        const stage = LEVELS[game.level + 1]
-        return [t(`stage.${stage.theme}`), t(`story.${stage.theme}`), t('loading')]
-    }
+// Actions that can be bound to other keys, by the key the game listens for
+const ACTIONS = { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', down: 'ArrowDown', roll: 'ShiftLeft', use: 'Space', freeze: 'KeyX', shield: 'KeyC', skill: 'KeyQ', bag: 'KeyI', talents: 'KeyT', talk: 'KeyE' }
+
+// Keys pressed for an action: those bound to it plus its own key unless that one was bound elsewhere
+const keysFor = code => [...Object.keys(settings.keys).filter(key => settings.keys[key] === code), ...(settings.keys[code] ?? code) === code ? [code] : []]
+
+// A line of a story scene: a board for the narrator and a portrait for everyone else.
+// The text itself is typed in by update().
+function storyLines(game, art) {
+    const { who, mood, board } = game.scene.lines[game.scene.line]
+    const name = who === 'narrator' ? '' : `<b>${t(who === 'chief' ? 'enemy.chief' : `speaker.${who}`)}</b>`
+    const portrait = who === 'narrator' ? '' : `<img src="${art.portraits[who][mood]}">`
+    const picture = board ? `<img class="board" src="${art.boards[board]}">` : ''
+    return ['', `${picture}<div class="dialog ${who}">${portrait}<div>${name}<p id="line"></p><em id="next">${t('next', { key: touch ? t('tap') : 'ENTER' })}${touch ? '' : ` &nbsp; ${t('skip')}`}</em></div></div>`]
+}
+
+function overlayLines(game, art) {
+    if (game.state === 'travel') return null
+    if (game.state === 'story') return storyLines(game, art)
     const start = touch ? t('tap') : 'ENTER'
     const retry = touch ? t('tap') : 'R'
     const controls = touch ? [t('hintTouch')] : [t('keysMove'), t('keysUse'), t('keysSkills'), t('keysMenu')]
@@ -51,7 +70,7 @@ function overlayLines(game) {
     const languages = LANGUAGES.map(code => `<span data-language="${code}" data-key="" ${code === language() ? 'data-active' : ''}>${languageName(code)}</span>`).join(' ')
     const continueLine = game.progress ? [`<span data-continue data-key="">${t('continueGame', { key: touch ? t('tap') : 'C' })}</span>`] : []
     return {
-        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), ...continueLine, `${t('language')}: ${languages}`],
+        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), ...continueLine, `<span data-open="settings" data-key="">${t('openSettings', { key: touch ? t('tap') : 'O' })}</span>`, `${t('language')}: ${languages}`],
         dead: [t('dead'), t('retry', { key: retry }), summaryLine(game)],
         win: [t('win'), t('winText'), summaryLine(game), t('again', { key: retry })],
     }[game.state]
@@ -60,7 +79,18 @@ function overlayLines(game) {
 export class Hud {
     constructor(game) {
         $('version').textContent = `v${version}`
-        const icons = this.icons = buildIcons()
+        $('stage').style.setProperty('--frame', `url(${buildFrame().toDataURL()})`)
+        const urls = canvases => Object.fromEntries(Object.entries(canvases).map(([key, canvas]) => [key, canvas.toDataURL()]))
+        this.art = { portraits: Object.fromEntries(Object.entries(buildPortraits()).map(([who, moods]) => [who, urls(moods)])), boards: urls(buildBoards()) }
+        this.trails = {}
+        this.applySettings()
+        this.items = buildItems()
+        // Hotbar icons are cut out of the item sheet
+        this.icons = Object.fromEntries(Object.entries(this.items.frames).map(([item, [{ x, y }]]) => {
+            const canvas = makeCanvas(32, 32)
+            canvas.getContext('2d').drawImage(this.items.canvas, x, y, 32, 32, 0, 0, 32, 32)
+            return [item, canvas]
+        }))
         const addSlot = key => {
             const slot = document.createElement('div')
             slot.className = 'slot'
@@ -82,11 +112,11 @@ export class Hud {
             return { item, slot, elements: document.querySelectorAll(`[data-key="${key}"]`) }
         })
 
-        this.items = buildItems()
         $('panel').style.setProperty('--items', `url(${this.items.canvas.toDataURL()})`)
+        $('panel').style.setProperty('--items-size', `${this.items.canvas.width / 2}px`)
         const onPanelClick = e => {
             const p = game.player
-            const { offer, purchase, sale, gearSale, pick, wear, slot, quiver, quest, talent, node, reset, close } = e.target.closest('[data-offer], [data-purchase], [data-sale], [data-gear-sale], [data-pick], [data-wear], [data-slot], [data-quiver], [data-quest], [data-talent], [data-reset], [data-close]')?.dataset ?? {}
+            const { offer, purchase, sale, gearSale, pick, wear, slot, quiver, quest, talent, node, reset, close, open, setting, value, bind, save } = e.target.closest('[data-offer], [data-purchase], [data-sale], [data-gear-sale], [data-pick], [data-wear], [data-slot], [data-quiver], [data-quest], [data-talent], [data-reset], [data-close], [data-open], [data-setting], [data-bind], [data-save]')?.dataset ?? {}
             // Offers and pack pieces are picked first to see their stats, then bought or put on with a button
             if (offer) this.offer = Number(offer)
             if (purchase) buy(p, OFFERS[this.offer])
@@ -100,6 +130,11 @@ export class Hud {
             if (talent) pickTalent(p, talent, Number(node))
             if (reset) resetTalents(p)
             if (game.panel === 'dev') devClick(game, e.target)
+            if (setting) this.changeSetting(setting, value)
+            if (bind) this.binding = bind
+            if (save === 'export') exportSave()
+            if (save === 'import') $('importFile').click()
+            if (open) game.panel = open
             if (close) game.panel = null
         }
         $('panel').addEventListener('click', onPanelClick)
@@ -107,7 +142,22 @@ export class Hud {
             const code = e.target.closest('[data-language]')?.dataset.language
             if (code) setLanguage(code)
             if (e.target.closest('[data-continue]')) game.continueGame()
+            if (e.target.closest('[data-open]')) game.panel = 'settings'
         }
+        // A key pressed while waiting for a binding goes to that action and never reaches the game
+        const onBindKey = e => {
+            if (!this.binding || game.panel !== 'settings') return
+            e.stopImmediatePropagation()
+            if (e.code !== 'Escape') {
+                // The old keys of the action stop working, the new one takes over
+                for (const key of keysFor(this.binding)) settings.keys[key] = 'None'
+                settings.keys[e.code] = this.binding
+                saveSettings()
+            }
+            this.binding = null
+        }
+        addEventListener('keydown', onBindKey, true)
+        $('importFile').addEventListener('change', importSave)
         $('overlay').addEventListener('click', onOverlayClick)
         // Info buttons open their box, taps on them and inside the box never reach the game
         const keepFromGame = e => e.stopPropagation()
@@ -122,7 +172,7 @@ export class Hud {
 
     icon(item) {
         const { x, y } = this.items.frames[item.base ?? item][0]
-        return `<i class="icon" style="background-position: -${x}px -${y}px"></i>`
+        return `<i class="icon" style="background-position: -${x / 2}px -${y / 2}px"></i>`
     }
 
     // Puts the icon of an item into a hotbar slot when it changes
@@ -178,7 +228,7 @@ export class Hud {
             ...p.pack.map((item, i) => this.row(item, itemName(item), `+${this.cost({ gold: price(item) })}`, `data-gear-sale="${i}"`)),
         ]
         const reset = `<div class="row" data-reset="1" ${canReset(p) ? '' : 'data-off'}><span>${t('resetTalents')}</span><em>${this.cost({ gold: resetCost(p) })}</em></div>`
-        return `<h2>${t('merchant')}</h2><h3>${t('buy')} <em>${this.cost({ gold: p.bag.gold })}</em></h3>${offers.join('')}<h3>${t('sell')}</h3>${sales.join('') || `<p>${t('nothingToSell')}</p>`}<h3>${t('talents')}</h3>${reset}`
+        return `<h2>${t('merchant')}</h2><h3>${t('buy')} <em>${this.cost({ gold: p.bag.gold })}</em></h3><div class="grid">${offers.join('')}</div><h3>${t('sell')}</h3>${sales.join('') || `<p>${t('nothingToSell')}</p>`}<h3>${t('talents')}</h3>${reset}`
     }
 
     // New quests show their reward, taken ones their progress
@@ -203,14 +253,68 @@ export class Hud {
     }
 
     pausePanel() {
-        return `<h2>${t('paused')}</h2><p>${touch ? t('tap') : 'ESC'} - ${t('resume')}</p>`
+        return `<h2>${t('paused')}</h2><div class="row" data-open="settings"><span>${t('settings')}</span></div><p>${touch ? t('tap') : 'ESC'} - ${t('resume')}</p>`
     }
 
-    update(game, fps, drawCalls) {
+    // Options change on a tap: lists step to the next choice, switches flip and volumes move by a tenth
+    settingsPanel() {
+        const choice = (key, options) => `<div class="row"><span>${t(`set.${key}`)}</span></div><div class="choice">${options.map(option => `<span data-setting="${key}" data-value="${option}" ${settings[key] === option ? 'data-active' : ''}>${t(`set.${option}`)}</span>`).join('')}</div>`
+        const flag = key => `<div class="row" data-setting="${key}"><span>${t(`set.${key}`)}</span><em>${t(settings[key] ? 'set.on' : 'set.off')}</em></div>`
+        const volume = key => `<div class="row"><span>${t(`set.${key}`)}</span><em><span class="button" data-setting="${key}" data-value="-0.1">-</span><b class="value">${Math.round(settings[key] * 10)}</b><span class="button" data-setting="${key}" data-value="0.1">+</span></em></div>`
+        const keys = Object.entries(ACTIONS).map(([action, code]) => `<div class="row" data-bind="${code}"><span>${t(`act.${action}`)}</span><em>${this.binding === code ? '...' : keysFor(code).map(key => key.replace(/^(Key|Digit|Arrow)/, '')).join(' ')}</em></div>`)
+        return `<h2>${t('settings')}</h2>` +
+            `<h3>${t('set.graphics')}</h3>${choice('quality', ['auto', ...QUALITIES])}` +
+            `<h3>${t('set.game')}</h3>${choice('difficulty', Object.keys(DIFFICULTIES))}${volume('music')}${volume('effects')}` +
+            `<h3>${t('set.access')}</h3>${flag('shake')}${flag('flashes')}${flag('bigText')}` +
+            (touch ? '' : `<h3>${t('set.keys')}</h3>${keys.join('')}<p>${t('set.keysHint')}</p>`) +
+            `<h3>${t('set.save')}</h3><div class="choice"><span data-save="export">${t('set.export')}</span><span data-save="import">${t('set.import')}</span></div>`
+    }
+
+    changeSetting(key, value) {
+        if (typeof settings[key] === 'boolean') settings[key] = !settings[key]
+        else if (typeof settings[key] === 'number') settings[key] = Math.round(Math.max(0, Math.min(1, settings[key] + Number(value))) * 10) / 10
+        else settings[key] = value
+        saveSettings()
+        this.applySettings()
+    }
+
+    applySettings() {
+        $('stage').classList.toggle('big', settings.bigText)
+    }
+
+    // A bar shows the value right away, the part just lost stays lit behind it and drains after a moment
+    bar(id, fraction) {
+        const value = Math.max(0, Math.min(1, fraction))
+        const trail = this.trails[id] ??= { value, hold: 0 }
+        if (value >= trail.value) Object.assign(trail, { value, hold: 0.4 })
+        else if ((trail.hold -= this.dt) < 0) trail.value = Math.max(value, trail.value - this.dt * 0.6)
+        $(id).style.width = `${100 * value}%`
+        $(`${id}Trail`).style.width = `${100 * trail.value}%`
+    }
+
+    update(game, fps, drawCalls, camera) {
         const p = game.player
-        $('mana').style.width = `${100 * p.mana / p.maxMana}%`
-        $('hp').style.width = `${Math.max(0, 100 * p.hp / p.maxHp)}%`
-        $('stamina').style.width = `${p.stamina}%`
+        this.dt = Math.min(0.1, game.time - (this.time ?? game.time))
+        this.time = game.time
+        // The stage name comes up once the story scene before the stage is over
+        if (game.state === 'play' && $('stage').dataset.state === 'story') {
+            $('banner').textContent = t(`stage.${game.stage.theme}`)
+            $('banner').classList.remove('on')
+            void $('banner').offsetWidth
+            $('banner').classList.add('on')
+        }
+        $('stage').dataset.state = game.state
+        // A new stage comes in through a fade from black
+        if (this.stage !== game.stage) {
+            this.stage = game.stage
+            $('fade').classList.remove('on')
+            void $('fade').offsetWidth
+            $('fade').classList.add('on')
+        }
+        this.bar('mana', p.mana / p.maxMana)
+        this.bar('hp', p.hp / p.maxHp)
+        this.bar('stamina', p.stamina / 100)
+        $('hp').classList.toggle('low', p.hp < p.maxHp * 0.3)
         // Weapon slots show the worn weapon, the bow and potion slots how many arrows of the quiver kind and potions are left
         this.slots.forEach((slot, i) => {
             const item = SLOTS[i]
@@ -240,41 +344,75 @@ export class Hud {
         $('talentAlert').hidden = !points(p) || game.panel === 'talents'
         $('talentAlert').textContent = `${touch ? '' : 'T - '}${t('talentPoints', { points: points(p) })}`
         $('quests').innerHTML = game.quests.filter(quest => quest.state === 'taken').map(quest => `<p>${questName(quest)} ${progress(game, quest)}/${quest.count}</p>`).join('')
+        // The dev counter turns red when a frame needs more draw calls than a phone should get
         $('fps').textContent = game.dev ? `${fps} FPS ${drawCalls} DC` : `${fps} FPS`
+        $('fps').style.color = game.dev && drawCalls > DRAW_BUDGET ? '#ff6b5a' : ''
         const boss = game.state === 'play' && game.enemies.find(e => TYPES[e.type].boss && e.hp > 0 && Math.abs(e.x - p.x) < TYPES[e.type].engage)
         $('boss').hidden = !boss
+        $('boss').classList.toggle('intro', Boolean(game.intro))
         if (boss) {
             $('bossName').textContent = t(`enemy.${boss.type}`)
-            $('bossHp').style.width = `${100 * boss.hp / boss.maxHp}%`
+            $('bossLine').textContent = game.intro ? t(`intro.${boss.type}`) : ''
+            this.bar('bossHp', boss.hp / boss.maxHp)
         }
 
-        const cam = Math.round(game.camX), top = view.h - H
         const near = game.state === 'play' && !game.panel && game.nearby()
         const prompts = []
-        if (near && !touch) prompts.push({ x: near.x, y: GROUND - 62, value: t(near.panel === 'shop' ? 'shopPrompt' : 'boardPrompt'), color: '#ffe9a8' })
+        if (near && !touch) prompts.push({ x: near.x, y: near.y - 62, value: t(near.panel === 'shop' ? 'shopPrompt' : 'boardPrompt'), color: '#ffe9a8' })
         // A mark over the board while it has quests to take, a sign at the exit once the way is clear
-        if (!near && game.quests.some(quest => quest.state === 'new')) prompts.push({ x: game.stage.board, y: GROUND - 64 + Math.round(Math.sin(game.time * 4) * 2), value: '<b>!</b>', color: '#ffd84a' })
-        if (exit) prompts.push({ x: LEVEL_W - 60, y: GROUND - 50, value: t('exitPrompt'), color: '#b8f5a0' })
+        const board = game.npcs.find(npc => npc.kind === 'board')
+        if (!near && game.quests.some(quest => quest.state === 'new')) prompts.push({ x: board.x, y: board.y - 64 + Math.round(Math.sin(game.time * 4) * 2), value: '<b>!</b>', color: '#ffd84a' })
+        if (exit) prompts.push({ x: game.map.w - 60, y: p.y - 50, value: t('exitPrompt'), color: '#b8f5a0' })
+        // Popups follow the zoomed camera of the renderer
+        const { x: left, y: top, w, h } = camera
         $('popups').innerHTML = [...game.popups, ...prompts]
-            .map(q => `<span class="popup" style="left:${Math.round(q.x - cam)}px;top:${Math.round(q.y + top)}px;color:${q.color}">${q.value}</span>`)
+            .map(q => `<span class="popup" style="left:${Math.round((q.x - left) * view.w / w)}px;top:${Math.round((q.y - top) * view.h / h)}px;color:${q.color}">${q.value}</span>`)
             .join('')
         $('trade').hidden = !near
         if (near) $('trade').textContent = t(near.panel === 'shop' ? 'btnShop' : 'btnQuests')
 
-        const panels = { bag: () => this.bagPanel(p), shop: () => this.shopPanel(p), quests: () => this.questPanel(game), talents: () => this.talentPanel(p), dev: () => devPanel(game), pause: () => this.pausePanel() }
+        const panels = { bag: () => this.bagPanel(p), shop: () => this.shopPanel(p), quests: () => this.questPanel(game), talents: () => this.talentPanel(p), dev: () => devPanel(game), pause: () => this.pausePanel(), settings: () => this.settingsPanel() }
         const panel = panels[game.panel]?.() ?? ''
         if (panel !== this.panel) {
             this.panel = panel
             $('panel').hidden = !panel
+            $('panel').dataset.panel = game.panel ?? ''
             $('panel').innerHTML = panel && `<div class="close" data-close="1">X</div>${panel}`
         }
 
-        // Rebuilt when the game state or the language changes
-        const overlay = game.state + language()
-        if (this.overlay === overlay) return
-        this.overlay = overlay
-        const lines = overlayLines(game)
-        $('overlay').hidden = !lines
-        if (lines) $('overlay').innerHTML = `<h1>${lines[0]}</h1>` + lines.slice(1).map(line => `<p>${line}</p>`).join('')
+        // Rebuilt when the game state, the story line or the language changes
+        const overlay = [game.state, game.level, game.scene?.line, language()].join()
+        if (this.overlay !== overlay) {
+            this.overlay = overlay
+            const lines = overlayLines(game, this.art)
+            $('overlay').hidden = !lines
+            $('overlay').className = game.state
+            if (lines) $('overlay').innerHTML = `<h1>${lines[0]}</h1>` + lines.slice(1).map(line => `<p>${line}</p>`).join('')
+        }
+        // Story text appears letter by letter, the prompt to go on shows once the line is complete
+        if (game.state !== 'story') return
+        const text = t(game.scene.lines[game.scene.line].text)
+        const shown = Math.floor(game.scene.t * TYPING)
+        $('line').textContent = text.slice(0, shown)
+        $('next').style.visibility = shown >= text.length ? 'visible' : 'hidden'
+    }
+}
+
+// The save and the settings go to a file and come back from one, the page reloads with the imported state
+function exportSave() {
+    const data = JSON.stringify({ progress: JSON.parse(localStorage.getItem('progress')), settings })
+    const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: 'frost-blade-save.json' })
+    link.click()
+    URL.revokeObjectURL(link.href)
+}
+
+async function importSave(e) {
+    try {
+        const { progress, settings: imported } = JSON.parse(await e.target.files[0].text())
+        if (progress) localStorage.setItem('progress', JSON.stringify(progress))
+        if (imported) localStorage.setItem('settings', JSON.stringify(imported))
+        location.reload()
+    } catch {
+        alert(t('set.importFailed'))
     }
 }

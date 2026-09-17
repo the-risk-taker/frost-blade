@@ -1,125 +1,183 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Mroźne Ostrze</title>
-  <meta name="description" content="Mroźne Ostrze - pixelartowa gra akcji w zimowych górach. Walcz z wilkami, goblinami i ogrami. Działa w przeglądarce, także na telefonie." />
-  <meta name="theme-color" content="#1590d0" />
+  <title>Frost Blade</title>
+  <meta name="description" content="Frost Blade - a pixel art action game in the winter mountains. Fight wolves, goblins and ogres. Plays in the browser, also on phones." />
+  <meta name="theme-color" content="#0a121b" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icon-180.png" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://game.therisktaker.pl/" />
-  <meta property="og:title" content="Mroźne Ostrze" />
-  <meta property="og:description" content="Pixelartowa gra akcji w zimowych górach. Zagraj w przeglądarce." />
+  <meta property="og:title" content="Frost Blade" />
+  <meta property="og:description" content="A pixel art action game in the winter mountains. Play in your browser." />
   <meta property="og:image" content="https://game.therisktaker.pl/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Pixelify Sans has Polish letters, its 5 looks like an S, so digits come from Silkscreen -->
   <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&text=0123456789&display=swap" rel="stylesheet" />
   <style>
-    html, body { margin: 0; height: 100%; background: #1590d0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-    #stage { position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Silkscreen', monospace; color: #fff; }
-    #stage canvas { image-rendering: pixelated; }
+    html, body { margin: 0; height: 100%; background: #0a121b; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    /* --text is the base text size, the big text option makes it larger. --frame is the wood and ice border painted by the game. */
+    #stage { --text: 8px; --better: #b8f5a0; --worse: #ff6b5a; position: fixed; left: 0; bottom: 0; width: 640px; height: 360px; transform-origin: 0 100%; font-family: 'Silkscreen', 'Pixelify Sans', monospace; font-size: var(--text); color: #fff; }
+    #stage.big { --text: 12px; }
+    #stage canvas, #stage img { image-rendering: pixelated; }
     #game { position: absolute; inset: 0; width: 100%; height: 100%; }
-    #counter, #quests, #fps, .popup, #overlay, .slot b, #touch { text-shadow: 1px 1px 0 #000; }
+    #counter, #quests, #fps, .popup, #overlay, .slot b, #touch, #boss, #talentAlert { text-shadow: 1px 1px 0 #000; }
+    .frame, #hud, #panel, #changelog, #creditsBanner, #talentAlert, .dialog, #touch div { border: 6px solid transparent; border-image: var(--frame) 6 fill / 6px round; image-rendering: pixelated; }
 
-    #counter { position: absolute; left: 8px; top: 8px; font-size: 8px; }
-    #quests { position: absolute; left: 8px; top: 20px; font-size: 8px; color: #ffe9a8; }
+    #counter { position: absolute; left: 8px; right: 90px; top: 8px; }
+    #quests { position: absolute; left: 8px; top: calc(var(--text) + 12px); color: #ffe9a8; }
     #quests p { margin: 0 0 2px; }
-    #fps { position: absolute; right: 8px; top: 8px; font-size: 8px; color: #b8f5a0; }
-    #version { position: absolute; right: 24px; bottom: 8px; font-size: 8px; color: #fff8; }
-    #credits { position: absolute; right: 8px; bottom: 6px; width: 12px; height: 12px; line-height: 12px; text-align: center; font-size: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
-    #creditsBanner { position: absolute; right: 8px; top: 22px; max-width: 200px; padding: 4px 6px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; text-align: right; user-select: text; -webkit-user-select: text; }
+    #fps { position: absolute; right: 8px; top: 8px; color: #b8f5a0; }
+    #version { position: absolute; right: 24px; bottom: 8px; color: #fff8; }
+    #credits { position: absolute; right: 8px; bottom: 6px; width: 12px; height: 12px; line-height: 12px; text-align: center; border-radius: 50%; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
+    #creditsBanner { position: absolute; right: 8px; top: 22px; max-width: 200px; padding: 2px; text-shadow: 1px 1px 0 #000; text-align: right; user-select: text; -webkit-user-select: text; }
     #creditsBanner a { color: inherit; }
-    #changes { position: absolute; left: 8px; bottom: 6px; height: 12px; padding: 0 4px; line-height: 12px; font-size: 8px; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
-    /* Barely see-through background: Chrome skipped drawing the game canvas above a fully opaque scrolling box */
-    #changelog { position: absolute; left: 8px; bottom: 24px; width: 240px; max-height: 70%; overflow-y: auto; touch-action: pan-y; padding: 8px; font-size: 8px; background: #2e170cfe; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
-    #changelog h2 { margin: 0 0 4px; font-size: 16px; font-weight: normal; color: #ffe9a8; }
-    #changelog h3 { margin: 6px 0 2px; font-size: 8px; font-weight: normal; color: #ffe9a8; }
+    #changes { position: absolute; left: 8px; bottom: 6px; height: 12px; padding: 0 4px; line-height: 12px; box-shadow: inset 0 0 0 1px #fff8; color: #fff8; cursor: pointer; }
+    #changelog { position: absolute; left: 8px; bottom: 24px; width: 240px; max-height: 70%; overflow-y: auto; touch-action: pan-y; padding: 4px; text-shadow: 1px 1px 0 #000; }
+    #changelog h2 { margin: 0 0 4px; font-size: calc(var(--text) * 2); font-weight: normal; color: #ffe9a8; }
+    #changelog h3 { margin: 6px 0 2px; font-size: var(--text); font-weight: normal; color: #ffe9a8; }
     #changelog p { margin: 0; color: #c9b08a; }
     #panel, #changelog { scrollbar-width: thin; scrollbar-color: #6b3d22 #140a05; }
     #panel::-webkit-scrollbar, #changelog::-webkit-scrollbar { width: 4px; }
     #panel::-webkit-scrollbar-track, #changelog::-webkit-scrollbar-track { background: #140a05; }
     #panel::-webkit-scrollbar-thumb, #changelog::-webkit-scrollbar-thumb { background: #6b3d22; }
-    .popup { position: absolute; font-size: 8px; transform: translateX(-50%); white-space: nowrap; }
-    .popup b { font-size: 16px; }
+    .popup { position: absolute; transform: translateX(-50%); white-space: nowrap; animation: pop 0.15s ease-out; }
+    .popup b { font-size: calc(var(--text) * 2); }
+    @keyframes pop { from { transform: translateX(-50%) scale(1.6); } }
 
-    #hud { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); padding: 5px 5px 4px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
-    .bars { display: flex; align-items: center; height: 14px; margin-bottom: 5px; }
-    .bar { position: relative; flex: 1; height: 8px; background: #140a05; }
+    #hud { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); padding: 1px 1px 0; }
+    .bars { display: flex; align-items: center; height: 14px; margin-bottom: 4px; }
+    .bar { position: relative; flex: 1; height: 8px; background: #140a05; box-shadow: 0 0 0 1px #0a0503; }
     .bar.hp { flex: 1.3; height: 14px; z-index: 1; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
-    .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fill); box-shadow: inset 0 2px var(--light), inset 0 -2px var(--dark); }
+    /* The lost part of a bar stays lit for a moment and then drains away */
+    .bar i, .bar s { position: absolute; left: 0; top: 0; bottom: 0; }
+    .bar s { background: #fff2c0; }
+    .bar i { background: var(--fill); box-shadow: inset 0 2px var(--light), inset 0 -2px var(--dark); }
+    .bar i::after { content: ''; position: absolute; left: 0; right: 0; top: 2px; height: 1px; background: linear-gradient(90deg, transparent, #fff6 40%, transparent 60%) no-repeat; background-size: 200% 100%; animation: shine 2.4s linear infinite; }
+    @keyframes shine { from { background-position: 150% 0; } to { background-position: -50% 0; } }
     #mana { --fill: #2a55d6; --light: #5c85ff; --dark: #1a3590; }
     #hp, #bossHp { --fill: #d0200f; --light: #ff5a3c; --dark: #8a1208; }
-    #boss { position: absolute; left: 50%; top: 22px; width: 200px; transform: translateX(-50%); font-size: 8px; text-align: center; text-shadow: 1px 1px 0 #000; }
-    #boss .bar { height: 6px; margin-top: 3px; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
     #stamina { --fill: #f0c419; --light: #ffe36a; --dark: #b08a0c; }
+    #hp.low { animation: throb 0.5s ease-in-out infinite alternate; }
+    @keyframes throb { to { filter: brightness(1.6); } }
+    #boss { position: absolute; left: 50%; top: 22px; width: 200px; transform: translateX(-50%); text-align: center; }
+    #boss .bar { height: 6px; margin-top: 3px; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; }
+    /* A boss entrance shows the name big in the middle of the screen */
+    #boss.intro { top: 30%; width: 320px; animation: enter 1.8s ease-out; }
+    #bossLine { display: block; font-style: normal; color: #c9b08a; }
+    #boss.intro #bossName { font-size: calc(var(--text) * 3); color: #ffd84a; text-shadow: 2px 2px 0 #000, 0 0 12px #ff5a40; }
+    @keyframes enter { from { opacity: 0; letter-spacing: 12px; } 30% { opacity: 1; letter-spacing: 0; } }
 
-    #talentAlert { position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; padding: 2px 5px; font-size: 8px; color: #ffe9a8; text-shadow: 1px 1px 0 #000; background: #2e170c; box-shadow: 0 0 0 1px #f0b46a, 0 0 0 2px #140a05; cursor: pointer; animation: pulse 0.8s ease-in-out infinite alternate; }
-    @keyframes pulse { to { box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; color: #c9b08a; } }
+    #talentAlert { position: absolute; left: 0; bottom: 100%; margin-bottom: 2px; padding: 0 2px; color: #ffe9a8; cursor: pointer; animation: pulse 0.8s ease-in-out infinite alternate; }
+    @keyframes pulse { to { color: #c9b08a; } }
     #slots { display: flex; gap: 4px; }
     .slot { position: relative; width: 34px; height: 34px; background: #1d0e06; box-shadow: inset 0 0 0 1px #4a2814, inset 2px 2px #120803; }
-    .slot.selected { background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a, inset 0 0 0 2px #7a4a22; }
+    .slot.selected { background: #3d2112; box-shadow: inset 0 0 0 1px #8fdcfa, inset 0 0 0 2px #2a6f8a, 0 0 6px #8fdcfa80; }
     .slot canvas { position: absolute; left: 1px; top: 1px; }
     .slot.disabled canvas { opacity: 0.35; }
     .slot b { position: absolute; right: 2px; bottom: 2px; font-size: 8px; font-weight: normal; }
     .slot:not(.skill) + .skill { margin-left: 6px; }
     .skill b { left: 2px; top: 1px; right: auto; bottom: auto; color: #ffe9a8; }
 
-    #overlay { position: absolute; left: 0; right: 0; top: 20%; padding: 8px 0 6px; background: rgba(8, 14, 20, 0.7); text-align: center; }
+    #overlay { position: absolute; left: 0; right: 0; top: 16%; padding: 8px 0 6px; background: linear-gradient(transparent, rgba(8, 14, 20, 0.75) 12%, rgba(8, 14, 20, 0.75) 88%, transparent); text-align: center; }
     #overlay h1 { margin: 0 0 6px; font-size: 40px; line-height: 1; font-weight: normal; color: #ffe9a8; text-shadow: 4px 4px 0 #000; }
-    #overlay p { margin: 0 0 4px; font-size: 8px; }
+    #overlay p { margin: 0 0 4px; }
+    #overlay.title { top: 3%; }
+    #overlay.title p { font-size: calc(var(--text) + 2px); }
     #overlay [data-language] { display: inline-block; margin-left: 4px; padding: 2px 6px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
     #overlay [data-active] { color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8; }
+    #overlay .menu span { cursor: pointer; }
+    /* The title glows like ice with a glint running across it */
+    #overlay.title h1 { font-size: 48px; color: transparent; background: linear-gradient(100deg, #8fdcfa 0%, #ffffff 20%, #bff0ff 30%, #4fa8d8 55%, #dff6ff 70%, #8fdcfa 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; text-shadow: none; filter: drop-shadow(3px 3px 0 #0a1a28) drop-shadow(0 0 6px #4fc3f780); animation: glint 4s linear infinite; }
+    @keyframes glint { from { background-position: 100% 0; } to { background-position: -200% 0; } }
+    /* A story scene: the stage name on top and a dialog with a portrait at the bottom */
+    #overlay.story { top: 8%; background: none; }
+    #overlay.story h1 { animation: rise 1.2s ease-out; }
+    @keyframes rise { from { opacity: 0; translate: 0 12px; } }
+    .dialog { position: fixed; left: 50%; bottom: 12px; display: flex; gap: 8px; align-items: center; width: min(480px, calc(100% - 40px)); transform: translateX(-50%); text-align: left; animation: rise 0.3s ease-out; }
+    .dialog img { width: 80px; height: 80px; flex: none; background: #140a05; box-shadow: 0 0 0 1px #6b3d22; }
+    .dialog b { color: #ffe9a8; font-weight: normal; }
+    .dialog p { margin: 4px 0 0 !important; line-height: 1.5; }
+    .dialog.narrator { width: min(420px, calc(100% - 40px)); color: #dfeaf0; }
+    .dialog.narrator p { min-height: 3em; text-align: center; }
+    .board { position: fixed; left: 50%; bottom: 96px; width: 320px; translate: -50%; border: 6px solid transparent; border-image: var(--frame) 6 fill / 6px round; animation: rise 0.8s ease-out; }
+    .dialog em { display: block; margin-top: 6px; font-style: normal; color: #c9b08a; animation: pulse 0.8s ease-in-out infinite alternate; }
+    /* Outside of play only the overlay, the menus and the fullscreen button stay on screen */
+    #stage:is([data-state="title"], [data-state="dead"], [data-state="win"], [data-state="travel"]) :is(#hud, #counter, #quests, #boss, #touch div:not(#fullscreen)),
+    #stage[data-state="story"] #hud, #stage[data-state="story"] #counter, #stage[data-state="story"] #quests, #stage[data-state="story"] #touch div:not(#fullscreen) { display: none; }
     #stage.loading > :not(#overlay) { visibility: hidden; }
+    #stage.loading #overlay h1 { font-size: 48px; }
+    /* The stage name rises up in the middle of the screen and fades away */
+    #banner { position: absolute; left: 0; right: 0; top: 22%; text-align: center; font-size: 40px; color: #ffe9a8; text-shadow: 4px 4px 0 #000; opacity: 0; pointer-events: none; }
+    #banner.on { animation: banner 3s ease-out; }
+    @keyframes banner { from { opacity: 0; translate: 0 12px; } 15%, 70% { opacity: 1; translate: 0 0; } }
+    /* Stages open with an iris: a hole in the dark grows from the middle of the screen */
+    #fade { position: absolute; left: 50%; top: 60%; width: 300vmax; height: 300vmax; translate: -50% -50%; border-radius: 50%; box-shadow: 0 0 0 300vmax #000; opacity: 0; pointer-events: none; }
+    #fade.on { animation: iris 1.4s ease-in; }
+    @keyframes iris { from { width: 0; height: 0; opacity: 1; } 25% { width: 0; height: 0; opacity: 1; } 99% { opacity: 1; } }
 
-    #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 260px; max-height: 75%; overflow-y: auto; touch-action: pan-y; padding: 10px; font-size: 8px; background: #2e170c; box-shadow: 0 0 0 1px #6b3d22, 0 0 0 2px #140a05; text-shadow: 1px 1px 0 #000; }
-    #panel h2, #panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: 16px; font-weight: normal; color: #ffe9a8; }
-    #panel h3 { margin: 8px 0 2px; font-size: 8px; }
+    #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: calc(var(--text) * 34); max-width: calc(100% - 40px); max-height: 84%; overflow-y: auto; touch-action: pan-y; padding: 4px; text-shadow: 1px 1px 0 #000; }
+    #panel h2, #panel h3 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; font-size: calc(var(--text) * 2); font-weight: normal; color: #ffe9a8; }
+    #panel h3 { margin: 8px 0 2px; font-size: var(--text); color: #8fdcfa; }
     #panel h2 em { margin-right: 16px; }
     #panel p { margin: 6px 0 0; color: #c9b08a; }
-    #panel .row { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 4px; cursor: pointer; }
+    #panel .row { display: flex; align-items: center; gap: 6px; min-height: 18px; padding: 0 4px; cursor: pointer; }
     #panel .row:hover { background: #3d2112; }
     #panel .row span { flex: 1; }
     #panel em { display: flex; align-items: center; gap: 2px; font-style: normal; }
     #panel [data-off] { opacity: 0.4; }
-    #panel [data-worn] em, #panel [data-done] em { color: #b8f5a0; }
-    #panel .compare { display: flex; align-items: flex-end; gap: 6px; padding: 3px 4px 4px 26px; background: #241208; box-shadow: inset 2px 0 #2f4a1c; }
-    #panel .compare div { flex: 1; }
+    #panel [data-worn] em, #panel [data-done] em, #panel .better { color: var(--better); }
+    #panel .worse { color: var(--worse); }
+    #panel .compare { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 6px; padding: 3px 4px 4px 26px; background: #241208; box-shadow: inset 2px 0 #2f4a1c; }
+    #panel .compare div { flex: 1 1 60%; }
+    /* The merchant lays out offers in two columns, the picked offer spans both */
+    #panel[data-panel="shop"] { width: calc(var(--text) * 60); }
+    #panel .grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
+    #panel .grid .compare { grid-column: 1 / -1; }
     #panel .compare p { margin: 0; }
     #panel .button { padding: 3px 10px; color: #ffe9a8; background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a; cursor: pointer; }
     #panel .button:hover { background: #6b3d22; }
-    #panel .close, #changelog .close { position: absolute; right: 10px; top: 10px; cursor: pointer; }
-    .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); image-rendering: pixelated; }
+    /* Volumes keep the same width for every value, so the buttons stay in line */
+    #panel .value { width: calc(var(--text) * 2.5); font-weight: normal; text-align: center; }
+    #panel .close, #changelog .close { position: absolute; right: 8px; top: 6px; cursor: pointer; }
+    .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); background-size: var(--items-size); image-rendering: pixelated; }
     #panel .tree { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    #panel .talent { height: 18px; margin-bottom: 3px; padding: 2px 3px; line-height: 9px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
+    #panel .talent { min-height: 18px; margin-bottom: 3px; padding: 2px 3px; line-height: 1.1; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
     #panel .talent:hover { background: #3d2112; }
     #panel [data-learned] { color: #b8f5a0; box-shadow: inset 0 0 0 1px #b8f5a0; }
     #panel [data-active] { background: #2f4a1c; }
-    #panel .dev span { display: inline-block; margin: 0 3px 3px 0; padding: 2px 4px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
+    #panel .dev span, #panel .choice span { display: inline-block; margin: 0 3px 3px 0; padding: 2px 4px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
+    #panel .choice [data-active] { color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8; }
     [data-key="KeyQ"]::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--cooldown); background: #000a; }
 
     #stage.photo #counter, #stage.photo #quests, #stage.photo #fps, #stage.photo #version,
     #stage.photo #hud, #stage.photo #touch, #stage.photo #boss, #stage.photo #popups,
     #stage.photo #credits, #stage.photo #creditsBanner, #stage.photo #changes, #stage.photo #changelog { display: none; }
 
+    /* Touch buttons: movement on the left, actions in an arc on the right, menus at the top */
     #touch, #rotate { display: none; }
-    #touch div { position: absolute; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; font-size: 8px; background: #2e170ccc; box-shadow: inset 0 0 0 1px #6b3d22, 0 0 0 1px #140a05; }
-    #touch div:active { background: #6b3d22; }
-    #touch .disabled { opacity: 0.5; }
-    #touch #fullscreen { right: 8px; top: 22px; width: auto; height: auto; padding: 5px; }
+    #touch div { position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 48px; height: 48px; border-width: 4px; border-image-width: 4px; opacity: 0.85; }
+    #touch div:active { filter: brightness(1.5); }
+    #touch .big { width: 60px; height: 60px; }
+    #touch .small { width: auto; height: 28px; padding: 0 4px; }
+    #touch .disabled { opacity: 0.4; }
     #touch [hidden] { display: none; }
     @media (pointer: coarse) {
       #touch { display: block; }
       .skill { display: none; }
     }
     @media (pointer: coarse) and (orientation: portrait) {
-      #rotate { position: fixed; inset: 0; display: grid; place-items: center; background: #1590d0; font: 16px 'Silkscreen', monospace; color: #fff; }
+      #rotate { position: fixed; inset: 0; display: grid; place-items: center; background: #0a121b; font: 16px 'Pixelify Sans', monospace; color: #fff; }
     }
   </style>
 </head>
@@ -133,36 +191,42 @@
     <div id="credits">i</div>
     <div id="creditsBanner" hidden>Created by Mateusz Patyk (<a href="mailto:matpatyk@gmail.com">matpatyk@gmail.com</a>)</div>
     <div id="popups"></div>
-    <div id="boss" hidden><span id="bossName"></span><div class="bar"><i id="bossHp"></i></div></div>
+    <div id="boss" hidden><span id="bossName"></span><em id="bossLine"></em><div class="bar"><s id="bossHpTrail"></s><i id="bossHp"></i></div></div>
     <div id="hud">
       <div class="bars">
-        <div class="bar"><i id="mana"></i></div>
-        <div class="bar hp"><i id="hp"></i></div>
-        <div class="bar"><i id="stamina"></i></div>
+        <div class="bar"><s id="manaTrail"></s><i id="mana"></i></div>
+        <div class="bar hp"><s id="hpTrail"></s><i id="hp"></i></div>
+        <div class="bar"><s id="staminaTrail"></s><i id="stamina"></i></div>
       </div>
       <div id="slots"></div>
       <div id="talentAlert" data-key="KeyT" hidden></div>
     </div>
+    <div id="fade"></div>
+    <div id="banner"></div>
     <div id="overlay"><h1 data-text="title"></h1><p data-text="loading"></p></div>
     <div id="panel" hidden></div>
+    <input id="importFile" type="file" accept=".json,application/json" hidden />
     <div id="touch">
-      <div data-key="KeyI" style="left: 12px; bottom: 70px" data-text="btnBag"></div>
-      <div id="trade" data-key="KeyE" style="right: 62px; bottom: 70px" hidden></div>
-      <div data-key="ArrowLeft" style="left: 12px; bottom: 20px">&lt;</div>
-      <div data-key="ArrowRight" style="left: 62px; bottom: 20px">&gt;</div>
-      <div data-key="KeyK" style="right: 62px; bottom: 20px" data-text="btnRoll"></div>
-      <div data-key="KeyJ" style="right: 12px; bottom: 20px" data-text="btnUse"></div>
-      <div data-key="ArrowUp" style="right: 12px; bottom: 70px" data-text="btnJump"></div>
-      <div data-key="KeyX" style="right: 62px; bottom: 120px" data-text="btnFreeze"></div>
-      <div data-key="KeyC" style="right: 12px; bottom: 120px" data-text="btnShield"></div>
-      <div data-key="KeyT" style="left: 12px; bottom: 120px" data-text="btnTalents"></div>
-      <div id="skill" data-key="KeyQ" style="right: 112px; bottom: 20px" hidden></div>
-      <div id="fullscreen" data-key="KeyF" data-text="btnFullscreen"></div>
+      <div data-key="ArrowLeft" style="left: 12px; bottom: 16px">&lt;</div>
+      <div data-key="ArrowDown" style="left: 64px; bottom: 16px">v</div>
+      <div data-key="ArrowRight" style="left: 116px; bottom: 16px">&gt;</div>
+      <div data-key="KeyJ" class="big" style="right: 12px; bottom: 16px" data-text="btnUse"></div>
+      <div data-key="ArrowUp" style="right: 80px; bottom: 16px" data-text="btnJump"></div>
+      <div data-key="KeyK" style="right: 18px; bottom: 84px" data-text="btnRoll"></div>
+      <div id="skill" data-key="KeyQ" style="right: 132px; bottom: 16px" hidden></div>
+      <div data-key="KeyX" style="right: 80px; bottom: 76px" data-text="btnFreeze"></div>
+      <div data-key="KeyC" style="right: 40px; bottom: 136px" data-text="btnShield"></div>
+      <div id="trade" data-key="KeyE" style="left: 12px; bottom: 76px" hidden></div>
+      <div data-key="KeyI" class="small" style="left: 8px; top: 24px" data-text="btnBag"></div>
+      <div data-key="KeyT" class="small" style="left: 56px; top: 24px" data-text="btnTalents"></div>
+      <div data-key="Escape" class="small" style="right: 8px; top: 24px">II</div>
+      <div id="fullscreen" data-key="KeyF" class="small" style="right: 36px; top: 24px" data-text="btnFullscreen"></div>
     </div>
-    <div id="changes">CHANGELOG</div>
+  <div id="changes">CHANGELOG</div>
     <div id="changelog" hidden>
       <div class="close">X</div>
       <h2>CHANGELOG</h2>
+      <h3>v0.0.10 - New Look</h3><p>Hand shaped pixel art for every character, every weapon and armor piece drawn on the hero, full animation sets with squash and stretch, animated spell effects. Story scenes with dialogues, portraits and illustrated boards. Tile terrain with platforms, walls and chasms, camera moving both ways. Parallax backgrounds, 2D lighting, bloom, reflections on ice, footprints and blood on snow. New interface with portraits, settings with graphics quality, difficulty, key binding, gamepad and accessibility options. Installable and playable offline.</p>
       <h3>v0.0.9 - Arsenal</h3><p>Axe, spear, daggers, frost staff and short bow. Ice, fire and piercing arrows. Gear rarity with random bonuses, legendary Alpha Fang and Chief's Crown. Gloves, boots, ring and amulet slots. Item comparison. New foes: mimic, looter, snow lynx, poacher.</p>
       <h3>v0.0.8 - Talents</h3><p>Talent tree with Warrior, Hunter and Frost branches and active skills. Random enemy spawns, area levels, bleeding, burning and other status effects.</p>
       <h3>v0.0.7 - Saves</h3><p>Progress saved in the browser with continue, run summary, first-time tips, photo mode and credits.</p>

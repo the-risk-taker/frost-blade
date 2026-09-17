@@ -37,9 +37,9 @@ export function noise(x, y, cell, seed, period = 0) {
 export const dither = (x, y) => (x + y) & 1
 
 const rgbCache = {}
-const rgb = hex => rgbCache[hex] ??= [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+const rgb = hex => rgbCache[hex] ??= [1, 3, 5, 7].map(i => parseInt(hex.slice(i, i + 2) || 'ff', 16))
 
-// Builds a canvas pixel by pixel, colorAt returns '#rrggbb' or nothing for transparent.
+// Builds a canvas pixel by pixel, colorAt returns '#rrggbb', '#rrggbbaa' or nothing for transparent.
 export function paint(w, h, colorAt) {
     const canvas = makeCanvas(w, h)
     const ctx = canvas.getContext('2d')
@@ -53,7 +53,7 @@ export function paint(w, h, colorAt) {
             img.data[i] = c[0]
             img.data[i + 1] = c[1]
             img.data[i + 2] = c[2]
-            img.data[i + 3] = 255
+            img.data[i + 3] = c[3]
         }
     }
     ctx.putImageData(img, 0, 0)

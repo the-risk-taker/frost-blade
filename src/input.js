@@ -1,3 +1,5 @@
+import { settings } from './settings.js'
+
 const down = new Set()
 const pressed = new Set()
 const pointers = new Map()
@@ -25,9 +27,9 @@ function lift(e) {
 
 addEventListener('keydown', e => {
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault()
-    press(e.code)
+    press(settings.keys[e.code] ?? e.code)
 })
-addEventListener('keyup', e => release(e.code))
+addEventListener('keyup', e => release(settings.keys[e.code] ?? e.code))
 addEventListener('pointerdown', e => {
     if (e.pointerType !== 'mouse') e.preventDefault()
     const key = keyOf(e)
@@ -43,7 +45,24 @@ addEventListener('wheel', e => {
 })
 addEventListener('blur', () => down.clear())
 
+// Gamepad buttons in the standard layout and the left stick work like keys. Start also confirms menus.
+const PAD = { 0: ['ArrowUp'], 1: ['ShiftLeft'], 2: ['Space'], 3: ['KeyQ'], 4: ['KeyX'], 5: ['KeyC'], 6: ['KeyT'], 7: ['KeyE'], 8: ['KeyI'], 9: ['Enter', 'Escape'], 12: ['ArrowUp'], 13: ['ArrowDown'], 14: ['ArrowLeft'], 15: ['ArrowRight'] }
+let padDown = new Set()
+
+function pollPad() {
+    const pad = [...navigator.getGamepads?.() ?? []].find(Boolean)
+    const now = new Set()
+    for (const [button, codes] of Object.entries(PAD)) if (pad?.buttons[button]?.pressed) codes.forEach(code => now.add(code))
+    if (pad?.axes[0] < -0.5) now.add('ArrowLeft')
+    if (pad?.axes[0] > 0.5) now.add('ArrowRight')
+    if (pad?.axes[1] > 0.7) now.add('ArrowDown')
+    for (const code of now) if (!padDown.has(code)) press(code)
+    for (const code of padDown) if (!now.has(code)) release(code)
+    padDown = now
+}
+
 export const input = {
+    poll: pollPad,
     held: (...codes) => codes.some(c => down.has(c)),
     hit: (...codes) => codes.some(c => pressed.has(c)),
     takeWheel() {

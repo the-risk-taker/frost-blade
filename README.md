@@ -4,6 +4,8 @@ A pixel-art 2D action game built on three.js. The hero travels through successiv
 
 Along the way the character grows by leveling up and learning talents with active skills, completes quests for merchants, hunts for gear of rising rarity (axes, spears, daggers, staves, bows, armor, rings, legendary uniques), and progress is saved locally in the browser.
 
+The world is built from tiles with platforms, walls and chasms. Every character is drawn as posed pixel art with full animation sets, lit by 2D lights with bloom and color grading. The game has settings for graphics quality, difficulty, sound, key binding, gamepads and accessibility, and it can be installed and played offline.
+
 ![Frost Blade](public/og.png)
 
 ## Setup

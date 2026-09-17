@@ -1,6 +1,6 @@
-export const H = 360
-export const GROUND = 280
-export const LEVEL_W = 4200
+export const TILE = 16
+// Art is drawn on a grid twice as dense as world units, so sprites have more detail while speeds and reaches stay the same
+export const DENSITY = 2
 
-// Visible area in game pixels, follows the window size.
+// Visible area in world units, follows the window size.
 export const view = { w: 640, h: 360 }

@@ -1,3 +1,5 @@
+import { settings } from './settings.js'
+
 let ac
 
 export function unlockAudio() {
@@ -6,21 +8,22 @@ export function unlockAudio() {
     startMusic()
 }
 
+// Volume is scaled by the music or effects slider from the settings
 function envelope(volume, duration) {
     const gain = ac.createGain()
-    gain.gain.setValueAtTime(volume, ac.currentTime)
+    gain.gain.setValueAtTime(Math.max(0.0001, volume), ac.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration)
     gain.connect(ac.destination)
     return gain
 }
 
-function tone(from, to, duration, type, volume) {
+function tone(from, to, duration, type, volume, bus = settings.effects) {
     if (!ac) return
     const osc = ac.createOscillator()
     osc.type = type
     osc.frequency.setValueAtTime(from, ac.currentTime)
     osc.frequency.exponentialRampToValueAtTime(to, ac.currentTime + duration)
-    osc.connect(envelope(volume, duration))
+    osc.connect(envelope(volume * bus, duration))
     osc.start()
     osc.stop(ac.currentTime + duration)
 }
@@ -35,7 +38,7 @@ function noise(duration, volume, frequency) {
     const filter = ac.createBiquadFilter()
     filter.type = 'bandpass'
     filter.frequency.value = frequency
-    src.connect(filter).connect(envelope(volume, duration))
+    src.connect(filter).connect(envelope(volume * settings.effects, duration))
     src.start()
 }
 
@@ -46,8 +49,8 @@ let musicOn = false
 function ambientNote() {
     if (!musicOn) return
     const freq = MUSIC_SCALE[Math.floor(Math.random() * MUSIC_SCALE.length)]
-    tone(freq, freq, 4, 'sine', 0.14)
-    tone(freq * 1.5, freq * 1.5, 4, 'sine', 0.08)
+    tone(freq, freq, 4, 'sine', 0.14, settings.music)
+    tone(freq * 1.5, freq * 1.5, 4, 'sine', 0.08, settings.music)
     setTimeout(ambientNote, 1200 + Math.random() * 900)
 }
 

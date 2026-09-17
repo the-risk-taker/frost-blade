@@ -1,22 +1,25 @@
-import { GROUND, H, LEVEL_W, view } from './const.js'
 import { sfx } from './sound.js'
 import { hurtPlayer, addXp } from './player.js'
-import { onIce, areaScale } from './levels.js'
+import { areaScale } from './levels.js'
+import { moveBody, onIce, tileAt, surface, box, overlap, bodyBox } from './terrain.js'
 import { afflict, has, tickStatuses } from './status.js'
 import { rollGear, rollUnique } from './items.js'
 
 const GRAVITY = 960
+const MAX_FALL = 600
+// How far above or below the hero a foe still notices him
+const SIGHT = 120
 // Where lurking foes wait, out of reach of every attack
 const HIDDEN = -1000
 
 function smash(damage) {
     return (e, game) => {
-        const p = game.player
-        const reach = (p.x - e.x) * e.dir
         game.shake = damage > 20 ? 10 : 6
-        game.burst(e.x + e.dir * 34, GROUND, '#eef7fa', 18, 110)
+        game.impact = Math.max(game.impact, damage > 20 ? 0.7 : 0.3)
+        if (tileAt(game.map, e.x + e.dir * 34, e.y + 1) === '~') game.mark(e.x + e.dir * 34, e.y, 'crack')
+        game.burst(e.x + e.dir * 34, e.y, '#eef7fa', 18, 110)
         sfx.smash()
-        if (reach > -10 && reach < 58 && p.y > GROUND - 18) hurtPlayer(p, damage, e.dir, game)
+        if (overlap(smashBox(e), bodyBox(game.player))) hurtPlayer(game.player, damage, e.dir, game)
     }
 }
 
@@ -26,12 +29,14 @@ function lunge(e) {
     sfx.lunge()
 }
 
+// Ground blows of heavy foes hit in front of them, the hero jumps over them
+export const smashBox = e => box(e.dir > 0 ? e.x - 10 : e.x - 58, e.y - 18, 68, 22)
+export const biteBox = (e, reach) => box(e.x - reach, e.y - e.h, reach * 2, e.h)
+
 // Hurts the hero once per attack when he touches the enemy
 function bite(damage, reach) {
     return (e, game) => {
-        const p = game.player
-        if (e.struck || Math.abs(p.x - e.x) > reach || p.y < e.y - TYPES[e.type].height || e.y < p.y - 34) return
-        e.struck = hurtPlayer(p, damage, e.dir, game)
+        if (!e.struck && overlap(biteBox(e, reach), bodyBox(game.player))) e.struck = hurtPlayer(game.player, damage, e.dir, game)
     }
 }
 
@@ -52,7 +57,7 @@ const POUNCE = { attack: 1.1, recover: 0.5, during: bite(18, 22) }
 function pounce(e, game) {
     const p = game.player
     e.x = p.x + p.dir * 40
-    e.y = H - view.h - 30
+    e.y = game.camY - 30
     e.dir = -p.dir
     e.vx = e.dir * 30
     e.pattern = POUNCE
@@ -60,9 +65,9 @@ function pounce(e, game) {
     sfx.lunge()
 }
 
-// The icicle falls where the hero stood when the spell was cast
+// The icicle falls where the hero stood when the spell was cast, from the ceiling or the top of the screen
 function icicle(e, game) {
-    game.icicles.push({ x: game.player.x, y: -40, vx: 0, vy: 1, life: 3 })
+    game.dropIcicle(game.player.x, game.player.y - 40)
     sfx.cast()
 }
 
@@ -70,7 +75,7 @@ const ram = bite(25, 30)
 
 function charge(e, game) {
     e.vx = e.dir * 380
-    game.burst(e.x - e.dir * 24, GROUND, '#eef7fa', 1, 60)
+    game.burst(e.x - e.dir * 24, e.y, '#eef7fa', 1, 60)
     ram(e, game)
 }
 
@@ -79,9 +84,9 @@ function howl(e, game) {
     game.shake = 6
     sfx.howl()
     for (const side of [-1, 1]) {
-        const x = Math.max(10, Math.min(LEVEL_W - 10, e.x + side * 280))
-        game.enemies.push(createEnemy('wolf', x, game.stage))
-        game.burst(x, GROUND, '#eef7fa', 20, 120)
+        const x = Math.max(20, Math.min(game.map.w - 20, e.x + side * 280))
+        game.enemies.push(createEnemy('wolf', x, surface(game.map, x, e.y), game.stage))
+        game.burst(x, e.y, '#eef7fa', 20, 120)
     }
 }
 
@@ -98,24 +103,24 @@ function alphaPattern(e, game) {
     return Math.abs(game.player.x - e.x) > 90 ? ALPHA.charge : ALPHA.lunge
 }
 
-// Every enemy runs the same loop: approach, wind up, attack, recover.
+// Every enemy runs the same loop: approach, wind up, attack, recover. Width and height give its body.
 // Heavy enemies can't be knocked back or interrupted while attacking.
 // Enemies with choose() pick one of their attack patterns before winding up.
 // Props like chests stand still, break when hit and don't count as foes.
 // Cost is the difficulty paid from a spawn budget, types without it never come from random pools.
 // Mimics look like chests until the hero comes close, looters steal loot lying around, lynxes lurk out of sight.
 export const TYPES = {
-    ogre: { hp: 60, cost: 3, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, blood: '#8f6446', strike: smash(20) },
-    chief: { hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, boss: true, blood: '#8f6446', strike: smash(30) },
-    wolf: { hp: 30, cost: 1, speed: 105, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.4, attack: 0.45, recover: 0.5, knockback: 160, blood: '#9aa8b3', strike: lunge, during: bite(12, 20) },
-    archer: { hp: 24, cost: 1, speed: 55, stride: 10, height: 34, engage: 340, reach: 230, keepAway: 110, windup: 0.8, attack: 0.1, recover: 0.9, knockback: 150, blood: '#5d8a3a', strike: shoot },
-    shaman: { hp: 30, cost: 2, speed: 45, stride: 8, height: 42, engage: 320, reach: 260, keepAway: 150, windup: 0.9, attack: 0.2, recover: 1.4, knockback: 150, blood: '#4a74a0', strike: icicle },
-    alpha: { hp: 260, speed: 80, stride: 12, height: 40, engage: 360, reach: 220, knockback: 40, heavy: true, boss: true, blood: '#3b444c', choose: alphaPattern },
-    chest: { hp: 10, speed: 0, stride: 0, height: 16, engage: 0, reach: 0, knockback: 0, heavy: true, prop: true, blood: '#8a5a2b' },
-    mimic: { hp: 50, cost: 2, speed: 70, stride: 12, height: 18, engage: 70, reach: 26, windup: 0.3, attack: 0.3, recover: 0.6, knockback: 60, blood: '#8a5a2b', strike: sfx.lunge, during: bite(14, 26) },
-    looter: { hp: 26, cost: 1, speed: 95, stride: 12, height: 32, engage: 360, reach: 24, windup: 0.3, attack: 0.2, recover: 0.5, knockback: 150, blood: '#5d8a3a', steals: true, strike: sfx.swing, during: bite(6, 26) },
-    lynx: { hp: 34, cost: 2, speed: 115, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.35, attack: 0.45, recover: 0.5, knockback: 150, blood: '#b08a5a', lurks: true, strike: lunge, during: bite(14, 20) },
-    poacher: { hp: 30, cost: 2, speed: 55, stride: 10, height: 34, engage: 320, reach: 200, keepAway: 90, windup: 0.7, attack: 0.15, recover: 1.2, knockback: 150, blood: '#8f6446', strike: throwNet },
+    ogre: { width: 30, hp: 60, cost: 3, speed: 42, stride: 7, height: 58, engage: 240, reach: 46, windup: 0.6, attack: 0.12, recover: 0.7, knockback: 120, heavy: true, blood: '#8f6446', strike: smash(20) },
+    chief: { width: 34, hp: 180, speed: 54, stride: 7, height: 66, engage: 260, reach: 50, windup: 0.45, attack: 0.12, recover: 0.7, knockback: 50, heavy: true, boss: true, blood: '#8f6446', strike: smash(30) },
+    wolf: { width: 36, hp: 30, cost: 1, speed: 105, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.4, attack: 0.45, recover: 0.5, knockback: 160, blood: '#9aa8b3', strike: lunge, during: bite(12, 20) },
+    archer: { width: 16, hp: 24, cost: 1, speed: 55, stride: 10, height: 34, engage: 340, reach: 230, keepAway: 110, windup: 0.8, attack: 0.1, recover: 0.9, knockback: 150, blood: '#5d8a3a', strike: shoot },
+    shaman: { width: 16, hp: 30, cost: 2, speed: 45, stride: 8, height: 42, engage: 320, reach: 260, keepAway: 150, windup: 0.9, attack: 0.2, recover: 1.4, knockback: 150, blood: '#4a74a0', strike: icicle },
+    alpha: { width: 50, hp: 260, speed: 80, stride: 12, height: 40, engage: 360, reach: 220, knockback: 40, heavy: true, boss: true, blood: '#3b444c', choose: alphaPattern },
+    chest: { width: 18, hp: 10, speed: 0, stride: 0, height: 16, engage: 0, reach: 0, knockback: 0, heavy: true, prop: true, blood: '#8a5a2b' },
+    mimic: { width: 18, hp: 50, cost: 2, speed: 70, stride: 12, height: 18, engage: 70, reach: 26, windup: 0.3, attack: 0.3, recover: 0.6, knockback: 60, blood: '#8a5a2b', strike: sfx.lunge, during: bite(14, 26) },
+    looter: { width: 16, hp: 26, cost: 1, speed: 95, stride: 12, height: 32, engage: 360, reach: 24, windup: 0.3, attack: 0.2, recover: 0.5, knockback: 150, blood: '#5d8a3a', steals: true, strike: sfx.swing, during: bite(6, 26) },
+    lynx: { width: 34, hp: 34, cost: 2, speed: 115, stride: 16, height: 28, engage: 300, reach: 80, windup: 0.35, attack: 0.45, recover: 0.5, knockback: 150, blood: '#b08a5a', lurks: true, strike: lunge, during: bite(14, 20) },
+    poacher: { width: 16, hp: 30, cost: 2, speed: 55, stride: 10, height: 34, engage: 320, reach: 200, keepAway: 90, windup: 0.7, attack: 0.15, recover: 1.2, knockback: 150, blood: '#8f6446', strike: throwNet },
 }
 
 // Loot table: [item, chance, count]. Gear is rolled at random, uniques come from bosses and mimics.
@@ -142,10 +147,10 @@ export function rollGroup(pool, budget, random) {
     return [type, ...rollGroup(pool, budget - TYPES[type].cost, random)]
 }
 
-export function createEnemy(type, x, stage) {
-    const { hp: base, lurks } = TYPES[type]
+export function createEnemy(type, x, y, stage) {
+    const { hp: base, lurks, width, height } = TYPES[type]
     const hp = Math.round(base * areaScale(stage))
-    return { type, x: lurks ? HIDDEN : x, home: x, y: GROUND, vx: 0, vy: 0, dir: -1, hp, maxHp: hp, state: lurks ? 'lurk' : 'idle', pattern: TYPES[type], t: 0, walk: 0, flashT: 0, statuses: {}, cooldown: 0, deadT: 0, struck: false, howls: 0, loot: [] }
+    return { type, x: lurks ? HIDDEN : x, y, w: width, h: height, home: x, vx: 0, vy: 0, pace: 0, dir: -1, onGround: false, hp, maxHp: hp, state: lurks ? 'lurk' : 'idle', pattern: TYPES[type], t: 0, walk: 0, flashT: 0, hurtT: 0, statuses: {}, cooldown: 0, deadT: 0, struck: false, howls: 0, loot: [] }
 }
 
 function setState(e, state) {
@@ -159,20 +164,21 @@ function setState(e, state) {
 export function damageEnemy(e, damage, game) {
     const type = TYPES[e.type]
     e.hp -= damage
-    game.popup(e.x, e.y - type.height - 20, damage)
+    game.popup(e.x, e.y - e.h - 20, damage)
     if (e.hp > 0) return
     game.kills[e.type] = (game.kills[e.type] ?? 0) + 1
     if (!type.prop) game.totalKills++
     game.shake = 6
-    game.burst(e.x, e.y - type.height / 2, type.blood, 30, 160)
+    game.burst(e.x, e.y - e.h / 2, type.blood, 30, 160)
+    if (!type.prop) game.mark(e.x, e.y, 'blood', e.dir)
     sfx.smash()
     if (!type.prop) addXp(game.player, Math.round(e.maxHp / 2), game)
     const scale = areaScale(game.stage)
     for (const [item, chance, count = 1] of LOOT[e.type]) {
         const loot = item === 'unique' ? rollUnique(game.player, chance, game.random) : game.random() >= chance ? null : item === 'gear' ? rollGear(game.random, scale) : item
-        if (loot) game.drop(e.x, e.y - type.height / 2, loot, Math.floor(count * scale))
+        if (loot) game.drop(e.x, e.y - e.h / 2, loot, Math.floor(count * scale))
     }
-    for (const q of e.loot) game.drop(e.x, e.y - type.height / 2, q.item, q.count)
+    for (const q of e.loot) game.drop(e.x, e.y - e.h / 2, q.item, q.count)
 }
 
 // A blow with knockback and statuses given as { name: seconds }. Freezing only pauses the enemy, heavy ones thaw twice as fast.
@@ -180,34 +186,38 @@ export function hurtEnemy(e, damage, dir, game, statuses = {}) {
     const type = TYPES[e.type]
     const committed = e.state === 'windup' || e.state === 'attack'
     e.flashT = 0.08
+    e.hurtT = 0.25
     for (const [name, time] of Object.entries(statuses)) afflict(e, name, type.heavy && name === 'freeze' ? time / 2 : time)
     if (!type.heavy || !committed) e.vx = dir * type.knockback
     if (!type.heavy && e.state === 'windup') setState(e, 'recover')
     game.hitstop(0.05)
-    game.burst(e.x, e.y - type.height / 2, statuses.freeze ? '#bff0ff' : '#ffffff', statuses.freeze ? 20 : 8)
-    game.flash(e.x + dir * 6, e.y - type.height / 2, '#ffffff', 36)
+    game.burst(e.x, e.y - e.h / 2, statuses.freeze ? '#bff0ff' : '#ffffff', statuses.freeze ? 20 : 8)
+    if (statuses.freeze) game.effect('shatter', e.x, e.y - e.h / 2, 0.6, 0.35)
+    game.flash(e.x + dir * 6, e.y - e.h / 2, '#ffffff', 36)
     sfx.hit()
     damageEnemy(e, damage, game)
 }
 
 export function updateEnemy(e, dt, game) {
     const type = TYPES[e.type]
-    // Roaming lynxes pounce as soon as they arrive
+    // Lurking foes wait out of sight and reach, roaming lynxes pounce as soon as they arrive
     if (e.state === 'lurk') {
         if (game.state === 'play' && (e.roaming || Math.abs(game.player.x - e.home) < 140)) pounce(e, game)
         return
     }
     const { pattern } = e
     e.flashT -= dt
+    e.hurtT -= dt
     e.cooldown -= dt
-    e.vy += GRAVITY * dt
-    e.x = Math.max(10, Math.min(LEVEL_W - 10, e.x + e.vx * dt))
-    e.y = Math.min(GROUND, e.y + e.vy * dt)
-    if (e.y === GROUND) {
-        e.vy = 0
-        // Knocked back enemies slide far on ice
-        e.vx *= Math.max(0, 1 - dt * (onIce(game.stage, e.x) ? 1 : 8))
-    }
+    e.vy = Math.min(MAX_FALL, e.vy + GRAVITY * dt)
+    // Knockback and the walking pace move the body together, knocked back enemies slide far on ice
+    const knock = e.vx
+    e.vx += e.pace
+    moveBody(e, dt, game.map, { step: true })
+    e.vx = e.vx ? knock : 0
+    if (e.onGround) e.vx *= Math.max(0, 1 - dt * (onIce(game.map, e) ? 1 : 8))
+    if (e.y > game.map.h + 64 && e.hp > 0) damageEnemy(e, e.hp, game)
+    e.pace = 0
     if (e.hp <= 0) {
         e.deadT += dt
         return
@@ -242,7 +252,7 @@ export function updateEnemy(e, dt, game) {
         // Wandering groups know where the hero is from the moment they arrive
         const dist = (prize?.x ?? game.player.x) - e.x
         const far = Math.abs(dist)
-        const engaged = game.state === 'play' && (far < type.engage || e.roaming)
+        const engaged = game.state === 'play' && ((far < type.engage && Math.abs(game.player.y - e.y) < SIGHT) || e.roaming)
         if (engaged) e.dir = Math.sign(dist) || e.dir
         const reach = prize ? 4 : type.reach
         const keepAway = e.loot.length && !prize ? Infinity : type.keepAway ?? 0
@@ -250,9 +260,10 @@ export function updateEnemy(e, dt, game) {
         if (engaged && !move && e.cooldown <= 0) {
             e.pattern = type.choose?.(e, game) ?? type
             setState(e, 'windup')
-        } else if (move && !has(e, 'root')) {
+        } else if (move && !has(e, 'root') && tileAt(game.map, e.x + move * (e.w / 2 + 4), e.y + 1) !== '.') {
+            // Foes walk up to the edge of a ledge but never over it
             e.state = 'walk'
-            e.x += move * type.speed * slow * dt
+            e.pace = move * type.speed * slow
             e.walk += dt * slow * type.stride
         } else {
             e.state = 'idle'
