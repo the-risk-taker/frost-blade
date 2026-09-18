@@ -4,6 +4,8 @@ const down = new Set()
 const pressed = new Set()
 const pointers = new Map()
 let wheel = 0
+// A finger dragged off a button that aims, so far from where it went down
+let drag = null
 
 function press(code) {
     if (!down.has(code)) pressed.add(code)
@@ -23,6 +25,7 @@ function keyOf(e) {
 function lift(e) {
     release(pointers.get(e.pointerId))
     pointers.delete(e.pointerId)
+    if (drag?.id === e.pointerId) drag = null
 }
 
 addEventListener('keydown', e => {
@@ -35,6 +38,12 @@ addEventListener('pointerdown', e => {
     const key = keyOf(e)
     pointers.set(e.pointerId, key)
     if (key) press(key)
+    if (e.target.closest?.('[data-aim]')) drag = { id: e.pointerId, x: 0, y: 0, from: [e.clientX, e.clientY] }
+})
+addEventListener('pointermove', e => {
+    if (drag?.id !== e.pointerId) return
+    drag.x = e.clientX - drag.from[0]
+    drag.y = e.clientY - drag.from[1]
 })
 addEventListener('pointerup', lift)
 addEventListener('pointercancel', lift)
@@ -64,6 +73,7 @@ function pollPad() {
 export const input = {
     poll: pollPad,
     held: (...codes) => codes.some(c => down.has(c)),
+    drag: () => drag && [drag.x, drag.y],
     hit: (...codes) => codes.some(c => pressed.has(c)),
     takeWheel() {
         const w = wheel

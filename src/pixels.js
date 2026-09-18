@@ -1,7 +1,11 @@
+// Every baked canvas is read back at least once, by outline(), normals() or a portrait cut. Reading a canvas the
+// browser keeps on the GPU flushes its whole draw queue, and these are drawn a pixel at a time, so the read costs
+// far more than the drawing. Asking for a CPU backed context here makes the whole bake many times faster.
 export function makeCanvas(w, h) {
     const canvas = document.createElement('canvas')
     canvas.width = w
     canvas.height = h
+    canvas.getContext('2d', { willReadFrequently: true })
     return canvas
 }
 

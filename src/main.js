@@ -103,7 +103,7 @@ function frame(now) {
   if (input.hit('KeyH')) stage.classList.toggle('photo')
   input.endFrame()
   renderer.render(game, dt)
-  hud.update(game, fps, renderer.gl.info.render.calls, renderer.view)
+  hud.update(game, renderer, fps)
   // The loading screen stays until the first frame with the stage art and the HUD in its state is ready
   stage.classList.remove('loading')
   requestAnimationFrame(frame)

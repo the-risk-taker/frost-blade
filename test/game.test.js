@@ -7,9 +7,10 @@ import { LEVELS } from '../src/levels.js'
 import { TYPES, createEnemy } from '../src/enemies.js'
 import { createItem, collect, equip } from '../src/items.js'
 import { tickStatuses, afflict } from '../src/status.js'
-import { parseMap, isSolid, groundBelow } from '../src/terrain.js'
+import { parseMap, copyMap, isSolid, groundBelow } from '../src/terrain.js'
 import { settings } from '../src/settings.js'
-import { hurtPlayer } from '../src/player.js'
+import { hurtPlayer, SLOTS } from '../src/player.js'
+import { damageEnemy, hurtEnemy } from '../src/enemies.js'
 
 const DT = 1 / 60
 
@@ -33,7 +34,7 @@ function arena(rows = []) {
     const game = new Game()
     game.startLevel(0)
     const air = '.'.repeat(60)
-    game.map = parseMap([...Array(16 - rows.length).fill(air), ...rows, ...Array(4).fill('#'.repeat(60))])
+    game.map = copyMap(parseMap([...Array(16 - rows.length).fill(air), ...rows, ...Array(4).fill('#'.repeat(60))]))
     Object.assign(game.player, { x: 40, y: GROUND, safe: { x: 40, y: GROUND } })
     game.enemies = []
     game.traps = []
@@ -193,6 +194,139 @@ test('foes stop at the edge of a ledge', () => {
     assert.ok(wolf.x > 24 * 16)
 })
 
+// The floor of the arena turned to ice, so heavy blows have something to shatter
+function frozen(game) {
+    game.map.tiles[16].fill('~')
+    return game
+}
+
+function withWeapon(game, base) {
+    const p = game.player
+    collect(p, createItem(base), 1)
+    equip(p, p.pack[0])
+    return p
+}
+
+test('a heavy tool shatters the ice into a hole and an ice block out of the floor', () => {
+    const game = frozen(arena())
+    withWeapon(game, 'pickaxe')
+    key('Space')
+    run(game, 0.5)
+    key('Space', false)
+    assert.ok(game.map.holes.size > 0)
+    // The hero can now fall through where the sheet gave way
+    const [hole] = game.map.holes
+    assert.equal(game.map.tiles[Math.floor(hole / game.map.cols)][hole % game.map.cols], '.')
+
+    const blocks = arena()
+    blocks.map.tiles[16][5] = 'X'
+    blocks.map.blocks.add(16 * blocks.map.cols + 5)
+    Object.assign(blocks.player, { x: 5 * 16 - 20, dir: 1 })
+    withWeapon(blocks, 'pickaxe')
+    key('Space')
+    run(blocks, 0.5)
+    key('Space', false)
+    assert.equal(blocks.map.blocks.size, 0)
+})
+
+test('the pickaxe holds the hero on an ice wall and climbs it', () => {
+    const game = arena()
+    for (let y = 6; y <= 16; y++) game.map.tiles[y][3] = 'I'
+    const p = withWeapon(game, 'pickaxe')
+    key('ArrowUp')
+    let climbed = false
+    run(game, 1, () => { climbed ||= p.climbing })
+    key('ArrowUp', false)
+    assert.ok(climbed)
+    // Held on the wall instead of jumping off it, so he keeps rising the whole time
+    assert.ok(p.y < GROUND - 80, `hero at ${p.y}`)
+})
+
+test('the bow shoots along the angle it was aimed at', () => {
+    const game = arena()
+    const p = game.player
+    p.slot = SLOTS.indexOf('bow')
+    key('Space')
+    key('ArrowUp')
+    run(game, 0.8)
+    key('ArrowUp', false)
+    key('Space', false)
+    run(game, DT)
+    assert.ok(p.aim > 0.9, `aim ${p.aim}`)
+    assert.ok(game.shots[0].vy < -200, `shot ${game.shots[0]?.vy}`)
+})
+
+test('the air drags on a flier, so a dive or a knockback does not carry it off the map', () => {
+    const game = arena()
+    const bat = createEnemy('bat', 300, GROUND, game.stage)
+    game.enemies.push(bat)
+    // Nothing on the ground slows a flier, so without drag of its own it would keep this speed forever
+    bat.vx = 400
+    run(game, 1)
+    assert.ok(Math.abs(bat.vx) < 60, `the bat still races at ${Math.round(bat.vx)}`)
+    let farthest = 0
+    run(game, 12, () => { farthest = Math.max(farthest, Math.abs(bat.x - game.player.x)) })
+    assert.ok(farthest < TYPES.bat.engage, `the bat drifted ${Math.round(farthest)}px away`)
+})
+
+test('a shield turns aside blows to the front but not from behind', () => {
+    const game = arena()
+    const guard = createEnemy('shieldman', 200, GROUND, game.stage)
+    guard.dir = -1
+    game.enemies.push(guard)
+    hurtEnemy(guard, 20, 1, game)
+    assert.equal(guard.hp, guard.maxHp)
+    hurtEnemy(guard, 20, -1, game)
+    assert.ok(guard.hp < guard.maxHp)
+})
+
+test('an ice golem splits when it falls and the Winter Queen breaks off the fight', () => {
+    const game = arena()
+    const golem = createEnemy('golem', 200, GROUND, game.stage)
+    game.enemies.push(golem)
+    damageEnemy(golem, golem.hp, game)
+    assert.equal(game.enemies.filter(e => e.type === 'golemling').length, 2)
+
+    const queen = createEnemy('queen', 300, GROUND, game.stage)
+    game.enemies.push(queen)
+    damageEnemy(queen, queen.maxHp * 0.8, game)
+    assert.ok(queen.fled)
+    assert.ok(queen.hp <= 0)
+})
+
+test('a yeti grabs the hero and a roll breaks the grip', () => {
+    const game = arena()
+    const p = game.player
+    game.enemies.push(createEnemy('yeti', 120, GROUND, game.stage))
+    let grabbed = false
+    run(game, 6, () => { grabbed ||= Boolean(p.grabbed) })
+    assert.ok(grabbed)
+    if (p.grabbed) {
+        tap('ShiftLeft')
+        run(game, DT)
+        assert.equal(p.grabbed, null)
+    }
+})
+
+test('a pike smashes its own hole in the ice and leaps out of it', () => {
+    const game = frozen(arena())
+    const pike = createEnemy('pike', 200, GROUND, game.stage)
+    game.enemies.push(pike)
+    assert.equal(pike.state, 'lurk')
+    game.player.x = 190
+    run(game, 0.5)
+    assert.ok(game.map.holes.size > 0)
+    assert.notEqual(pike.state, 'lurk')
+
+    // On bare rock it stays hidden rather than bursting out of plain ground
+    const stone = arena()
+    const inland = createEnemy('pike', 200, GROUND, stone.stage)
+    stone.enemies.push(inland)
+    stone.player.x = 190
+    run(stone, 0.5)
+    assert.equal(inland.state, 'lurk')
+})
+
 test('stage maps have a hero start, merchants and ground under every spawn', () => {
     for (const stage of LEVELS) {
         const game = new Game()
@@ -200,7 +334,7 @@ test('stage maps have a hero start, merchants and ground under every spawn', () 
         assert.ok(game.npcs.some(npc => npc.kind === 'board') && game.npcs.some(npc => npc.kind === 'merchant'))
         assert.ok(stage.map.every(row => row.length === stage.map[0].length))
         run(game, 0.5)
-        for (const e of game.enemies.filter(e => e.state !== 'lurk')) assert.ok(e.onGround, `${e.type} at ${e.x} on ${stage.theme} floats`)
+        for (const e of game.enemies.filter(e => e.state !== 'lurk' && !TYPES[e.type].flies)) assert.ok(e.onGround, `${e.type} at ${e.x} on ${stage.theme} floats`)
     }
 })
 

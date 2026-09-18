@@ -10,6 +10,8 @@ const NEAR = { rim: '#f2f8f7', light: '#a8b8b2', mid: '#93a49f', shadow: '#66777
 // Dark ice formations inside the cave
 const CAVE_FAR = { rim: '#5d93ab', light: '#2f5870', mid: '#294f66', shadow: '#1f3d52', dark: '#1a3447', crevice: '#142a3a', snow: '#6fb0c8', snowShadow: '#3f7890' }
 const CAVE_NEAR = { rim: '#7fb8cc', light: '#3a5f6f', mid: '#335666', shadow: '#243f4d', dark: '#1e3542', crevice: '#152833', snow: '#8fcfe0', snowShadow: '#4f8ea3' }
+// Bare rock and deep snow, too high for anything green to grow
+const PEAK_NEAR = { rim: '#ffffff', light: '#c3d4dc', mid: '#a8bcc6', shadow: '#7a8f9c', dark: '#64798a', crevice: '#4a5e70', snow: '#f4fbff', snowShadow: '#c8dde9' }
 // Mountains lit by the setting sun behind the castle
 const DUSK_FAR = { rim: '#f3c9b0', light: '#a8779a', mid: '#9a6c8e', shadow: '#7a5579', dark: '#6a4a6c', crevice: '#583d5c', snow: '#f0d4d0', snowShadow: '#c49aac' }
 const PINE = { dark: '#153a4b', mid: '#22687a', light: '#35908f', high: '#56b2a4', snow: '#e9f5f7', trunk: '#8a532e', trunkDark: '#5a341f' }
@@ -18,6 +20,8 @@ const SKIES = {
   forest: ['#1590d0', '#1b9fdc', '#22ade6', '#2cb9ee', '#45c4f1'],
   cave: ['#0a121b', '#0d1824', '#111f2e', '#152738', '#1a2f42'],
   ruins: ['#3b2a55', '#5a3a66', '#80506e', '#b0686e', '#d98a6e'],
+  peaks: ['#0b4f8c', '#1268ab', '#1d85c9', '#36a2e2', '#6cc4f0'],
+  lake: ['#040a18', '#08142a', '#0e2040', '#183358', '#2f5580'],
 }
 
 function sky(bands) {
@@ -248,10 +252,11 @@ function wall(ctx, cx, base, h, r, c) {
 // Foreground silhouettes pass in front of the action: tree trunks, hanging ice or broken arches, almost black
 function foreground(seed, theme) {
   const w = 2400, canvas = makeCanvas(w, 720), ctx = canvas.getContext('2d'), r = rng(seed)
-  const dark = { forest: ['#06121a', '#0d2230'], cave: ['#040a10', '#0c1a26'], ruins: ['#0c0612', '#1a0f24'] }[theme]
+  const dark = { forest: ['#06121a', '#0d2230'], cave: ['#040a10', '#0c1a26'], ruins: ['#0c0612', '#1a0f24'], peaks: ['#08161f', '#102a38'], lake: ['#030810', '#081624'] }[theme]
   for (let x = 900 + r() * 300; x < w - 100; x += 1400 + r() * 600) {
     const cx = Math.floor(x)
-    if (theme === 'cave') {
+    // Ice hangs into the view where there is a roof over the world, elsewhere dark trunks pass by
+    if (theme === 'cave' || theme === 'lake') {
       for (let i = 0; i < 5; i++) {
         const sx = cx + (r() - 0.5) * 160, len = 60 + r() * 200, half = 6 + r() * 12
         for (let y = 0; y < len; y++) for (let dx = -half * (1 - y / len); dx <= half * (1 - y / len); dx++) dot(ctx, sx + dx, y, dx > 0 ? dark[0] : dark[1])
@@ -306,6 +311,23 @@ export const THEMES = {
     near: { dark: '#1c1224', mid: '#3b2e45', light: '#4f3f59', high: '#6e5c7a', snow: '#efe6ef', trunk: '#3b2e45', trunkDark: '#1c1224' },
     fog: '#d98a6e', snow: true,
   },
+  // Thin air high on the mountain: pale rock, deep snow and a hard cold light
+  peaks: {
+    ambient: [1, 1, 1], grade: { tint: [0.99, 1.01, 1.07], saturation: 0.95, contrast: 1.08 },
+    rock: ['#16202a', '#2c3f4e', '#4a6478', '#63849a'], cap: ['#9fc6d8', '#cfe6f0', '#eef7fb', '#ffffff'],
+    bank: ['#e8f4f8', '#b8d6e4', '#cbe3ec'], pine: HAZY_PINE,
+    near: { dark: '#1b3a4a', mid: '#2a5468', light: '#3d7086', high: '#56949f', snow: '#e9f5f7', trunk: '#3a6272', trunkDark: '#26404e' },
+    fog: '#cfe8f5', snow: true,
+  },
+  // Night over the lake, lit only by the sky and what glows under the ice
+  lake: {
+    ambient: [0.55, 0.62, 0.8], grade: { tint: [0.94, 0.99, 1.14], saturation: 1.08, contrast: 1.06 },
+    rock: ['#0b1420', '#182838', '#2b4055', '#3e5a74'], cap: ['#4f7f9c', '#88b8d0', '#bfe0ef', '#eafaff'],
+    bank: ['#cfe8f4', '#33607c', '#42748f'], pine: { dark: '#0e2230', mid: '#173648', light: '#204a5e', high: '#2d6274', snow: '#8fc0d4', trunk: '#173648', trunkDark: '#0e2230' },
+    near: { dark: '#08121c', mid: '#112232', high: '#254256', light: '#1a3244', snow: '#6fa8c0', trunk: '#112232', trunkDark: '#08121c' },
+    crystal: ['#1f5f78', '#62b3cf', '#a9e3f0', '#effcff'],
+    fog: '#14243a', snow: true,
+  },
 }
 
 // Parallax layers from the sky to the foreground. Factor is how much they follow the camera, fog fades far ones into the haze.
@@ -313,16 +335,17 @@ function layers(stage) {
   const { theme } = stage
   const c = THEMES[theme]
   const cave = theme === 'cave'
-  const far = { forest: FAR, cave: CAVE_FAR, ruins: DUSK_FAR }[theme]
+  const far = { forest: FAR, cave: CAVE_FAR, ruins: DUSK_FAR, peaks: FAR, lake: CAVE_FAR }[theme]
   return [
     { canvas: sky(SKIES[theme]), factor: 0, density: 1, stretch: true },
     ...cave ? [] : [{ canvas: clouds(7), factor: 0.04, drift: 4, density: 1, fog: 0.1 }],
     { canvas: mountains(11, 6, 20, 75, 0.95, far), factor: 0.1, density: 1, fog: 0.3 },
-    { canvas: theme === 'ruins' ? castle(23) : mountains(23, 8, 70, 115, 1.15, cave ? CAVE_NEAR : NEAR), factor: 0.22, density: 1, fog: 0.2 },
+    { canvas: theme === 'ruins' ? castle(23) : mountains(23, 8, 70, 115, 1.15, { cave: CAVE_NEAR, lake: CAVE_NEAR, peaks: PEAK_NEAR }[theme] ?? NEAR), factor: 0.22, density: 1, fog: 0.2 },
     { canvas: cave ? ceiling(31) : cliffs(31), factor: 0.4, density: 1, fog: 0.12 },
     { canvas: mist(5), factor: 0.5, drift: 10, density: 2, alpha: cave ? 0.12 : 0.3, top: 400 },
-    { canvas: bank(57, theme, 480, { step: cave ? 90 : 30, h: cave ? 80 : 70 }, { ...c, pine: c.pine }), factor: 0.62, density: 2, fog: 0.06, sway: 1 },
-    { canvas: bank(91, theme, 540, { step: cave ? 160 : 110, h: cave ? 110 : 150, walls: true }, { ...c, bank: [c.cap[3], c.cap[1], c.cap[2]], pine: c.near, crystal: THEMES.cave.crystal }), factor: 0.82, density: 2, fog: 0.18, sway: 1.5 },
+    // Little grows high on the mountain or out on the lake, so their banks stay almost bare
+    { canvas: bank(57, theme, 480, { step: { cave: 90, peaks: 150, lake: 110 }[theme] ?? 30, h: cave ? 80 : 70 }, { ...c, pine: c.pine }), factor: 0.62, density: 2, fog: 0.06, sway: 1 },
+    { canvas: bank(91, theme, 540, { step: { cave: 160, peaks: 280, lake: 220 }[theme] ?? 110, h: cave ? 110 : 150, walls: true }, { ...c, bank: [c.cap[3], c.cap[1], c.cap[2]], pine: c.near, crystal: THEMES.cave.crystal }), factor: 0.82, density: 2, fog: 0.18, sway: 1.5 },
   ]
 }
 
@@ -405,7 +428,8 @@ function icePixel(x, y, cracked) {
 function tiles(map, theme) {
   const keys = new Map(), back = [], front = []
   const at = (tx, ty) => tx < 0 || tx >= map.cols ? '#' : map.tiles[ty]?.[tx] ?? '.'
-  const solidAt = (tx, ty) => at(tx, ty) === '#' || at(tx, ty) === '~'
+  // Ice blocks are drawn on top of the tiles instead, so the floor under them is already open here
+  const solidAt = (tx, ty) => ['#', '~', 'I'].includes(at(tx, ty))
   // Top of the ground of the nearest solid column on either side of a chasm column
   const top = tx => map.tiles.findIndex((row, ty) => ty > 8 && solidAt(tx, ty))
   const edgeTop = tx => {
@@ -419,13 +443,13 @@ function tiles(map, theme) {
       const char = map.tiles[ty][tx]
       // Empty tiles of a chasm, from the height of the ground beside it down to the bottom of the map
       const pit = map.tiles[map.rows - 1][tx] === '.' && char === '.' && ty >= edgeTop(tx)
-      if (char === '.' && !pit) continue
+      if ((char === '.' || char === 'X') && !pit) continue
       const tile = pit ? { char: 'abyss', level: Math.min(2, ty - edgeTop(tx)) } : char === '=' ? { char, left: at(tx - 1, ty) !== '=', right: at(tx + 1, ty) !== '=' }
         : { char, up: !solidAt(tx, ty - 1), down: ty < map.rows - 1 && !solidAt(tx, ty + 1), left: !solidAt(tx - 1, ty), right: !solidAt(tx + 1, ty), depth: solidAt(tx, ty - 1) + solidAt(tx, ty - 2), variant: Math.floor(hash(tx, ty, 9) * 3) }
       const key = JSON.stringify(tile)
       if (!keys.has(key)) keys.set(key, tile)
       back.push([tx * TILE, ty * TILE, key])
-      if (char === '~') front.push([tx * TILE, ty * TILE, hash(tx, ty, 4) < 0.3 ? 'crackedIce' : 'ice'])
+      if (char === '~' || char === 'I') front.push([tx * TILE, ty * TILE, hash(tx, ty, 4) < 0.3 ? 'crackedIce' : 'ice'])
     }
   }
   const animations = Object.fromEntries([...keys].map(([key, tile]) => [key, [ctx => {
@@ -434,6 +458,24 @@ function tiles(map, theme) {
   animations.ice = [ctx => ctx.drawImage(paint(TILE_ART, TILE_ART, (x, y) => icePixel(x, y, false)), 0, 0)]
   animations.crackedIce = [ctx => ctx.drawImage(paint(TILE_ART, TILE_ART, (x, y) => icePixel(x, y, true)), 0, 0)]
   return { sheet: plainSheet(TILE_ART, TILE_ART, animations), back, front }
+}
+
+// A block of ice set into the floor and the hole left where the sheet was shattered, both drawn over the tiles
+export function buildTilePatches() {
+  const size = TILE_ART
+  return plainSheet(size, size, {
+    block: [ctx => ctx.drawImage(paint(size, size, (x, y) => {
+      const edge = Math.min(x, y, size - 1 - x, size - 1 - y)
+      if (edge === 0) return THEMES.cave.crystal[0]
+      if (x < 3 || y < 3) return THEMES.cave.crystal[3]
+      return (x * 3 + y * 5) % 29 < 3 ? THEMES.cave.crystal[2] : THEMES.cave.crystal[1]
+    }), 0, 0)],
+    hole: [ctx => ctx.drawImage(paint(size, size, (x, y) => {
+      const rim = 2 + Math.round(Math.sin(x * 0.6) * 1.5)
+      if (y < rim) return y < rim - 1 ? '#dff6ff' : '#8fd3ea'
+      return (x * 7 + y * 3) % 31 === 0 ? '#12384f' : y > size - 6 ? '#020509' : '#061626'
+    }), 0, 0)],
+  })
 }
 
 // A sheet without outlines, frames drawn from the top left corner
@@ -574,13 +616,24 @@ function decorate(map, theme, seed) {
           lights.push({ x, y: y - 10, radius: 70, color: [0.35, 0.8, 1], flicker: 0 })
         } else if (roll < 0.16) props.push([x, y + 2, pick(['stalagmite0', 'stalagmite1']), dir])
         else if (roll < 0.18) props.push([x, y + 1, 'bones0', dir])
-      } else {
+      } else if (theme === 'ruins') {
         if (roll < 0.07 && !spawnNear(x)) props.push([x, y + 2, pick(['pillar0', 'pillar1', 'pillar2']), dir])
         else if (roll < 0.16) props.push([x, y + 2, pick(['rubble0', 'rubble1']), dir])
         else if (roll < 0.175) props.push([x, y + 2, 'statue0', dir])
         else if (roll < 0.2) animated.push([x, y, 'banner', dir])
+      } else if (theme === 'peaks') {
+        if (roll < 0.14) props.push([x, y + 3, pick(['boulder0', 'boulder1', 'boulder2']), dir])
+        else if (roll < 0.22) props.push([x, y + 2, pick(['stalagmite0', 'stalagmite1']), dir])
+        else if (roll < 0.24) props.push([x, y + 1, 'bones0', dir])
+      } else {
+        // Crystals frozen into the lake glow up through the sheet
+        if (roll < 0.07) {
+          props.push([x, y + 2, pick(['crystal0', 'crystal1', 'crystal2']), dir])
+          lights.push({ x, y: y - 10, radius: 70, color: [0.35, 0.8, 1], flicker: 0 })
+        } else if (roll < 0.13) props.push([x, y + 2, pick(['stalagmite0', 'stalagmite1']), dir])
+        else if (roll < 0.15) props.push([x, y + 1, 'bones0', dir])
       }
-      if (theme !== 'cave' && r() < 0.3) grasses.push([x + (r() - 0.5) * 12, y + 1])
+      if ((theme === 'forest' || theme === 'ruins') && r() < 0.3) grasses.push([x + (r() - 0.5) * 12, y + 1])
       break
     }
   }
@@ -601,7 +654,7 @@ export function buildStage(stage, map) {
     layers: layers(stage),
     foreground: { canvas: foreground(13, theme), factor: 1.35, density: 2 },
     tiles: tiles(map, theme),
-    ...decorate(map, theme, { forest: 42, cave: 17, ruins: 71 }[theme]),
+    ...decorate(map, theme, { forest: 42, cave: 17, ruins: 71, peaks: 88, lake: 55 }[theme]),
   }
 }
 
@@ -619,11 +672,6 @@ export function buildBoards() {
     }), 0, 0)
     draw(ctx, rng(w))
     return canvas
-  }
-  const figure = (ctx, x, y, size, color, crown = false) => {
-    limb(ctx, [x, y], [x, y - size * 2.2], size * 1.4, size, [color, color, color, color])
-    shape(ctx, [x, y - size * 2.8], size, 0, (lx, ly) => Math.hypot(lx, ly) < size * 0.7 && color)
-    if (crown) for (const dx of [-1, 0, 1]) limb(ctx, [x + dx * size * 0.5, y - size * 3.3], [x + dx * size * 0.6, y - size * 4.2], 1.5, 1, ['#dff6ff', '#bff0ff', '#dff6ff', '#ffffff'])
   }
   const snowfall = (ctx, r, count, slant) => {
     for (let i = 0; i < count; i++) {
@@ -648,6 +696,22 @@ export function buildBoards() {
       snowfall(ctx, r, 60, 0)
     }),
     seekers: seekersBoard(),
+    // A bare ridge over a sea of peaks, the wind tearing a plume of snow off the summit
+    peaks: board(['#0b4f8c', '#1268ab', '#1d85c9', '#36a2e2'], (ctx, r) => {
+      ctx.drawImage(mountains(11, 6, 20, 75, 0.95, FAR), 0, 20, 640, 160, 0, 36, 320, 80)
+      ctx.drawImage(mountains(23, 5, 40, 95, 1.2, PEAK_NEAR), 0, 30, 640, 180, 0, 66, 320, 90)
+      const ridge = x => 16 + Math.sin(x * 0.018) * 9 + noise(x, 0, 40, 9) * 8
+      ctx.drawImage(paint(w, 60, (x, y) => {
+        const edge = ridge(x)
+        if (y < edge) return
+        return y < edge + 2 ? '#ffffff' : y < edge + 8 ? '#cfe6f0' : (x * 3 + y * 5) % 23 === 0 ? '#2c3f4e' : '#4a6478'
+      }), 0, 116)
+      // A lone seeker on the ridge, leaning into the wind the snow is blowing with
+      blit(ctx, posed(SEEKER, {
+        legF: [0.5, 0.55], legB: [-0.45, 0.2], armF: [0.55, 0.8], armB: [-0.5, 1.0], lean: 0.35, head: 0.1, wave: 0.4,
+      }), [104, 118 + Math.round(ridge(104)) + 3], 0.42)
+      snowfall(ctx, r, 90, -4)
+    }),
     // The Winter Queen on her frozen lake under the northern lights
     // Whispering crystals glowing in the dark of the cave
     crystals: board(['#050a10', '#0a141e', '#0e1c2a', '#122436'], (ctx, r) => {
@@ -678,14 +742,24 @@ export function buildBoards() {
         return (spire || side) && (lx < -2 ? '#bfe8f8' : '#6fb0d0')
       })
       ctx.drawImage(paint(w, 50, (x, y) => (x * 3 + y * 7) % 23 === 0 ? '#dff6ff' : y < 2 ? '#8fd3ea' : y % 6 === 0 ? '#3a6a88' : '#2a5470'), 0, 110)
-      // A long gown, a crown of ice and a cold glow in the eyes, mirrored faintly in the ice
-      shape(ctx, [120, 118], 30, 0, (lx, ly) => ly > -12 && ly < 22 && Math.abs(lx) < 4 + (ly + 12) * 0.3 && '#0a1020')
-      figure(ctx, 120, 112, 7, '#0a1020', true)
-      shape(ctx, [120, 92], 4, 0, (lx, ly) => Math.abs(ly) < 0.8 && Math.abs(Math.abs(lx) - 2) < 0.8 && '#8ff0ff')
-      shape(ctx, [120, 150], 16, 0, (lx, ly) => Math.abs(lx) < 10 - ly * 0.6 && ly > -10 && ly < 10 && dither(lx + 120, ly) && '#0a1020')
+      // The queen stands on the ice in a trailing gown, mirrored faintly under her feet
+      humanoid(ctx, QUEEN, { x: 120, y: 138, legF: [0.1, 0.1], legB: [-0.1, 0.1], armF: [0.15, 0.25], armB: [-0.15, 0.25] })
+      shape(ctx, [120, 148], 16, 0, (lx, ly) => Math.abs(lx) < 10 - ly * 0.5 && ly > -4 && ly < 12 && dither(lx + 120, ly) && '#0a1020')
     }),
   }
 }
+
+// A board body posed with the character rig at full size in its own cell, so it can be blitted down
+// to whatever the distance calls for and the whole figure shrinks together. Joints come back in cell pixels.
+const posed = (look, pose) => {
+  const cell = makeCanvas(96, 104)
+  const ctx = cell.getContext('2d')
+  ctx.translate(48, 96)
+  return { cell, ...humanoid(ctx, look, pose).anchors }
+}
+
+const blit = (ctx, { cell }, [x, y], scale) =>
+  ctx.drawImage(cell, 0, 0, 96, 104, Math.round(x - 48 * scale), Math.round(y - 96 * scale), Math.round(96 * scale), Math.round(104 * scale))
 
 // Cloaked travellers with packs, drawn with the character rig as dark shapes against the snow
 const DUSK = ['#0e151d', '#141e29', '#1b2835', '#2c3d4f']
@@ -712,6 +786,39 @@ const SEEKER = {
     shape(ctx, head, 12, lean, (lx, ly) => {
       const hood = Math.hypot(lx, ly) < 8.5 || (lx < -4 && lx > -11 && ly > -6 && ly < 2 - (lx + 4) * 0.4)
       return hood && (lx < -6 || ly < -6 ? DUSK[3] : DUSK[0])
+    })
+  },
+}
+
+// The Winter Queen, a dark figure in a gown trailing over the ice, crowned with spikes of it.
+// Her rig is cut to board size, so she is drawn straight onto the board and keeps her one pixel wide details.
+const GOWN = ['#050a14', '#0a1020', '#14243c', '#2e5a82']
+const FLAT = ['#0a1020', '#0a1020', '#0a1020', '#0a1020']
+// Spikes sit on the pixel centers left of the middle, so the gaps between them stay a pixel wide
+const CROWN = [[-4.5, 3], [-2.5, 5], [-0.5, 7], [1.5, 5], [3.5, 3]]
+const QUEEN = {
+  thigh: 6, shin: 7, torso: 11, shoulder: 2, neck: 5, upper: 6, fore: 6, foot: 2,
+  legW: [4, 3, 3], bootW: 3, armW: [4, 3, 2], handR: 1.6,
+  // Limbs are flat, the gown covers them and only its own edges catch the light
+  ramps: { pants: FLAT, boots: FLAT, sleeve: FLAT, hand: FLAT },
+  back: { pants: FLAT, boots: FLAT, sleeve: FLAT, hand: FLAT },
+  // A gown from the shoulders down to a train on the ice
+  body(ctx, { hip, chest, lean }) {
+    const center = [(hip[0] + chest[0]) / 2, (hip[1] + chest[1]) / 2 + 4]
+    shape(ctx, center, 24, lean, (lx, ly) => {
+      const half = 4.5 + Math.max(0, ly + 6) * 0.34
+      if (ly < -9 || ly > 17 || Math.abs(lx) > half) return
+      return lx < -half + 1.5 ? GOWN[3] : lx > half - 1.5 ? GOWN[0] : GOWN[1]
+    })
+  },
+  // Hair falling around the face, eyes lit from within and a crown of ice spikes
+  face(ctx, { head, lean }) {
+    shape(ctx, head, 12, lean, (lx, ly) => {
+      const spike = CROWN.some(([dx, high]) => ly < -3.5 && ly > -3.5 - high && Math.abs(lx - dx) < 0.6)
+      if (spike || (ly > -4.2 && ly < -3.2 && lx > -5 && lx < 4)) return lx < 0 ? '#dff6ff' : '#8fd0e8'
+      if (!(Math.abs(lx) < 3.2 - Math.max(0, ly) * 0.1 && ly > -4 && ly < 8) && Math.hypot(lx, ly) > 3.5) return
+      if (Math.abs(Math.abs(lx) - 1.5) < 0.6 && ly > -1 && ly < 0.2) return '#8ff0ff'
+      return lx < -2.5 ? GOWN[3] : Math.hypot(lx, ly) < 2.8 ? GOWN[1] : GOWN[0]
     })
   },
 }
@@ -760,15 +867,12 @@ function seekersBoard() {
   walkers.forEach((t, i) => {
     const [x, y] = trail(t), scale = 0.95 - t * 0.75, a = i * 1.7
     const leader = i === walkers.length - 1
-    const cell = makeCanvas(96, 104)
-    const c = cell.getContext('2d')
-    c.translate(48, 96)
-    const { anchors } = humanoid(c, SEEKER, {
+    const body = posed(SEEKER, {
       legF: [0.6 * Math.sin(a), 0.3 + 0.9 * Math.max(0, -Math.cos(a))], legB: [-0.6 * Math.sin(a), 0.3 + 0.9 * Math.max(0, Math.cos(a))],
       armF: leader ? [2.1, 0.4] : [0.5 - 0.4 * Math.sin(a), 0.9], armB: [-0.4 + 0.4 * Math.sin(a), 0.9],
       lean: 0.3, head: 0.15, wave: i * 0.3,
     })
-    const [hx, hy] = anchors.hand
+    const [hx, hy] = body.hand
     const torch = [x + hx * scale, y + hy * scale]
     // The torch throws warm light around, thinning out with distance
     if (leader) shape(ctx, torch, 70, 0, (lx, ly) => {
@@ -776,7 +880,7 @@ function seekersBoard() {
       const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(Math.round(ly) & 3) * 4 + (Math.round(lx) & 3)] / 16
       return d < 1 && bayer < (1 - d) ** 1.5 * 0.8 && (d < 0.3 ? '#ffe6b8' : '#f3d9b6')
     })
-    ctx.drawImage(cell, 0, 0, 96, 104, Math.round(x - 48 * scale), Math.round(y - 96 * scale), Math.round(96 * scale), Math.round(104 * scale))
+    blit(ctx, body, [x, y], scale)
     if (leader) {
       limb(ctx, torch, [torch[0] + 2, torch[1] - 6], 3, 2, ['#3a2210', '#5a3418', '#8a5a2b', '#b07a44'])
       shape(ctx, [torch[0] + 2, torch[1] - 13], 12, 0, (lx, ly) => Math.abs(lx + ly * 0.3) < 5 + ly * 0.45 && ly < 6 && ly > -10 && (ly > 2 ? '#f07a19' : Math.abs(lx + ly * 0.3) < 2 ? '#fff2a8' : '#f0c419'))

@@ -1,5 +1,5 @@
 import { makeCanvas, outline, hash, paint } from './pixels.js'
-import { INK, along, shape, limb, ball, sheet, frames, tween, rotations, humanoid, quadruped } from './rig.js'
+import { INK, along, shape, limb, ball, sheet, frames, tween, rotations, atlas, humanoid, quadruped } from './rig.js'
 
 const TAU = Math.PI * 2
 const ease = t => 1 - (1 - t) ** 2
@@ -16,6 +16,9 @@ const BLADE = ['#12524d', '#2a9d94', '#4fd6c8', '#d4fff8']
 const FUR = ['#262d33', '#4c5862', '#6b7884', '#9aa8b3']
 const BONE = ['#6e6450', '#b9ad8c', '#e8e0c8', '#fbf7ea']
 const LEATHER = ['#2a170d', '#52301b', '#7a4a29', '#a0693a']
+const YETI = ['#5e7382', '#8fa8b8', '#c6dce8', '#ffffff']
+const SCALE = ['#123a44', '#1f6672', '#3a9aa6', '#7fd4dc']
+const SHADE = ['#161a30', '#2a2f52', '#454a7e', '#6f74b0']
 
 // Hero clothes that gear recolors. They are baked in key colors and the renderer swaps every key for the ramp of the worn piece.
 // A key is red 254, green picks the slot and blue the tone.
@@ -43,6 +46,9 @@ export const GEAR_CLOTHES = {
     boots: { boots: LEATHER },
     cloak: { cape: FUR },
     shamanCloak: { cape: ['#101c2c', '#1f3550', '#2f5078', '#4a74a0'] },
+    scaleArmor: { vest: SCALE, shirt: ['#0d2a33', '#17505c', '#2b7d8a', '#5fb6c0'] },
+    yetiCloak: { cape: YETI },
+    crampons: { boots: IRON },
 }
 
 const HERO = {
@@ -155,6 +161,12 @@ const STAB = [[1.3, 1.1], [1.7, 0.9], [1.0, 1.9]].map(([high, low]) => [
 ])
 const STAFF = SLASH.map(chain => chain.map(key => ({ ...key, armB: [key.armF[0] - 0.3, key.armF[1] + 0.4], grip: key.grip - 0.2 })))
 
+// The drawn bow at an angle: the bow arm swings with the aim and the hero leans after it
+const aimAt = angle => [0, 0.6, 1.2, 1.8, 2.4, 3].map(d => hero({
+    armF: [1.57 + angle, 0], armB: [1.35 + angle * 0.8, 1.2 + d * 0.5], lean: -0.05 - angle * 0.15, head: -angle * 0.2,
+    grip: 0, legF: [0.45, 0.2], legB: [-0.4, 0.2],
+}))
+
 // Every move of the hero, also those the game will use later. Weapons, bows and head gear are drawn on the anchors of these frames.
 export function buildHero() {
     const idle = t => ({ y: sin(t * TAU) > 0.3 ? 1 : 0, armF: [0.1 + 0.04 * sin(t * TAU), 0.3], armB: [-0.12, 0.3], legF: [0.12, 0.05], legB: [-0.1, 0.05], head: 0.04 * sin(t * TAU), wave: t, cape: 0.15 + 0.05 * sin(t * TAU) })
@@ -188,8 +200,8 @@ export function buildHero() {
         grabbed: loop(6, t => ({ legF: [0.5 * sin(t * TAU), 0.6], legB: [-0.5 * sin(t * TAU), 0.6], armF: [-2.6, 0.3 + 0.3 * sin(t * TAU)], armB: [-2.4, 0.3], lean: -0.1, head: -0.3, y: -8 })),
         ladder: loop(6, t => ({ legF: [0.9 + 0.5 * sin(t * TAU), 1.5 + 0.5 * sin(t * TAU)], legB: [0.9 - 0.5 * sin(t * TAU), 1.5 - 0.5 * sin(t * TAU)], armF: [2.4 + 0.4 * sin(t * TAU), 0.8], armB: [2.4 - 0.4 * sin(t * TAU), 0.8], lean: 0.1, y: round(sin(t * TAU)) })),
         rope: loop(6, t => ({ legF: [0.2 + 0.2 * sin(t * TAU), 0.3], legB: [-0.1 + 0.2 * sin(t * TAU), 0.4], armF: [3 + 0.25 * sin(t * TAU), 0.1], armB: [-3 + 0.25 * sin(t * TAU), 0.1], lean: 0.05 * sin(t * TAU), y: -4 })),
-        // Bow drawn from slack to full, the string hand pulls back to the chest
-        aim: [0, 0.6, 1.2, 1.8, 2.4, 3].map(d => hero({ armF: [1.57, 0], armB: [1.35, 1.2 + d * 0.5], lean: -0.05, grip: 0, legF: [0.45, 0.2], legB: [-0.4, 0.2] })),
+        // Bow drawn from slack to full, the string hand pulls back to the chest. Three rows for aiming low, level and high.
+        aim: aimAt(0), aimHigh: aimAt(0.55), aimLow: aimAt(-0.55),
         cast: keyed(6, [{ armF: [0.9, 1.4], armB: [0.2, 1.2], lean: -0.1, grip: 0 }, { armF: [1.2, 1.6], armB: [0.5, 1.5], lean: -0.15, grip: 0, y: 1 }, { armF: [1.6, 0], armB: [0.3, 0.8], lean: 0.2, grip: 0 }, { armF: [1.5, 0.1], armB: [0.1, 0.6], lean: 0.1, grip: 0 }]),
         drink: keyed(6, [{ armF: [0.4, 1.2], lean: 0, head: 0, grip: 0 }, { armF: [1.1, 2.4], lean: -0.15, head: -0.35, grip: 0 }, { armF: [1.2, 2.6], lean: -0.2, head: -0.45, grip: 0 }, { armF: [0.6, 1.4], lean: 0, head: 0, grip: 0 }]),
         whirl: frames(8, (ctx, t) => humanoid(ctx, HERO, { armF: [1.57 + 0.2 * sin(t * TAU), 0.1], armB: [-1.6, 0.2], lean: 0.1 * sin(t * TAU * 2), grip: 0, legF: [0.5, 0.4], legB: [-0.5, 0.4], y: 3, cape: 1, scarf: 0.2, wave: t * 2 })),
@@ -257,6 +269,12 @@ const GEAR_ART = {
     // Bows stand across the aim with the string on the side of the hand
     bow: ctx => bowArt(ctx, 18, 0),
     shortbow: ctx => bowArt(ctx, 13, 0),
+    // The harpoon launcher: an iron bow with a spool of line under the grip
+    harpoon: ctx => {
+        bowArt(ctx, 16, 0)
+        limb(ctx, [0, 9], [0, 15], 6, 5, IRON)
+        limb(ctx, [-2, 12], [4, 12], 7, 6, [BONE[0], BONE[1], BONE[2], BONE[2]])
+    },
     frost: ctx => shape(ctx, [4, 0], 7, 0, (lx, ly) => {
         const n = hypot(lx, ly) / 5
         return n <= 1 && (n < 0.35 ? ICE[3] : ball(ICE, lx / 5, ly / 5, n))
@@ -278,6 +296,14 @@ const GEAR_ART = {
         if (n > 1 || (lx > 2 && ly > -3)) return
         return ly < -7 && lx < 2 ? FUR[3] : (lx * 3 + ly) % 5 < 1 ? FUR[1] : ball(FUR, lx / 11, ly / 11, n)
     }),
+    // A climbing pickaxe: a short haft with a curved beak and a flat adze
+    pickaxe: ctx => {
+        limb(ctx, [-14, 0], [16, 0], 5, 5, WOOD)
+        limb(ctx, [16, -3], [26, -9], 7, 5, IRON)
+        limb(ctx, [26, -9], [34, -16], 5, 2, IRON)
+        limb(ctx, [16, 3], [24, 9], 7, 8, IRON)
+        limb(ctx, [-17, 0], [-12, 0], 7, 7, LEATHER)
+    },
     crown: ctx => shape(ctx, [0, -6], 12, 0, (lx, ly) => {
         const spikes = ly < -2 && ly > -7 && (abs(lx) < 1.5 || abs(lx - 6) < 1.5 || abs(lx + 6) < 1.5)
         if (!(spikes || (ly >= -2 && ly <= 2 && abs(lx) < 8.5))) return
@@ -295,12 +321,15 @@ function bowArt(ctx, r, draw) {
     for (let i = -r + 1; i < r; i++) ctx.fillRect(round(2 - draw * (1 - abs(i) / r)), i, 1, 1)
 }
 
-// A bow drawn back by d pixels of string with an arrow nocked
-function drawnBow(r, d) {
-    return drawing(64, ctx => {
+// A bow drawn back by d pixels of string with an arrow nocked, or a harpoon with its barbs and line
+function drawnBow(r, d, harpoon) {
+    return drawing(72, ctx => {
         bowArt(ctx, r, d)
-        limb(ctx, [2 - d, 0], [26 - d, 0], 2, 2, WOOD)
-        limb(ctx, [26 - d, 0], [30 - d, 0], 4, 1, IRON)
+        limb(ctx, [2 - d, 0], [26 - d, 0], harpoon ? 3 : 2, 2, harpoon ? IRON : WOOD)
+        limb(ctx, [26 - d, 0], [32 - d, 0], 5, 1, IRON)
+        if (!harpoon) return
+        for (const side of [-1, 1]) limb(ctx, [26 - d, side * 2], [20 - d, side * 5], 2, 1, IRON)
+        for (let i = 0; i < 5; i++) limb(ctx, [-6 - d - i * 5, 2 + (i & 1) * 2], [-10 - d - i * 5, 4 - (i & 1) * 2], 1, 1, [BONE[1], BONE[1], BONE[2], BONE[2]])
     })
 }
 
@@ -308,6 +337,10 @@ function drawnBow(r, d) {
 // Worn pieces drawn over the body, each on an anchor of the hero frames. Back ones are drawn behind the body.
 export const WORN = {
     armor: [['shoulder', 'pauldron']],
+    scaleArmor: [['shoulder', 'pauldron']],
+    yetiCloak: [['chest', 'furCollar']],
+    crampons: [['footF', 'bootTop'], ['footB', 'bootTop', 'back']],
+    deepAmulet: [['chest', 'pendant']],
     chainmail: [['hip', 'mailSkirt']],
     robe: [['hip', 'hem']],
     cloak: [['chest', 'furCollar']],
@@ -354,14 +387,19 @@ Object.assign(GEAR_ART, {
     },
 })
 
-const GEAR_SIZE = { sword: 96, axe: 96, spear: 144, daggers: 48, staff: 104, bow: 48, shortbow: 48, frost: 24, potion: 24, helmet: 32, hood: 32, crown: 32, pauldron: 24, mailSkirt: 28, hem: 36, furCollar: 28, boneCollar: 28, cuff: 20, bootTop: 28, ringBand: 12, pendant: 24, fangPendant: 24 }
+const GEAR_SIZE = { sword: 96, axe: 96, spear: 144, daggers: 48, staff: 104, pickaxe: 96, bow: 48, shortbow: 48, harpoon: 56, frost: 24, potion: 24, helmet: 32, hood: 32, crown: 32, pauldron: 24, mailSkirt: 28, hem: 36, furCollar: 28, boneCollar: 28, cuff: 20, bootTop: 28, ringBand: 12, pendant: 24, fangPendant: 24 }
+
+// Everything held in the hand turns through 32 angles, worn pieces need far fewer
+const HELD = ['sword', 'axe', 'spear', 'daggers', 'staff', 'pickaxe', 'bow', 'shortbow', 'harpoon']
+const BOWS = { bow: 18, shortbow: 13, harpoon: 16 }
 
 export function buildGear(base) {
-    const art = rotations(drawing(GEAR_SIZE[base], GEAR_ART[base]), ['sword', 'axe', 'spear', 'daggers', 'staff', 'bow', 'shortbow'].includes(base) ? 32 : 16)
-    if (base !== 'bow' && base !== 'shortbow') return art
-    // Bows also have frames with the string drawn back, used while aiming straight ahead
-    const drawn = [0, 3, 6, 9].map(d => drawnBow(base === 'bow' ? 18 : 13, d))
-    return { ...art, drawn: sheet(64, 64, 32, 32, { drawn: drawn.map(canvas => ctx => { ctx.drawImage(canvas, -32, -32) }) }) }
+    const art = rotations(drawing(GEAR_SIZE[base], GEAR_ART[base]), HELD.includes(base) ? 32 : 16)
+    if (!(base in BOWS)) return art
+    // Bows also have frames with the string drawn back, turned to every angle the hero can aim at
+    const drawn = [0, 3, 6, 9].map(d => rotations(drawnBow(BOWS[base], d, base === 'harpoon'), 16))
+    atlas(drawn)
+    return { ...art, drawn }
 }
 
 // Frames tweened through key poses of a rig, extra adds values that switch instead of blending
@@ -378,6 +416,7 @@ const GOBLIN = {
 }
 const LOOTER = { ...GOBLIN, cloth: ['#1c1917', '#3a3430', '#5a524a', '#7a7068'] }
 const POACHER = { ...GOBLIN, skin: SKIN, cloth: ['#172012', '#2e3d22', '#4a5e34', '#6a7e4a'] }
+const SHIELDMAN = { ...GOBLIN, cloth: ['#1d2328', '#333c44', '#4e5a64', '#6d7d8a'] }
 
 function goblinLook(c, carry) {
     return {
@@ -426,6 +465,13 @@ function goblinLook(c, carry) {
             }
             if (carry === 'sack' && pose.loaded !== false) limb(ctx, handF, along(handF, 1.9, 10), 3, 2, IRON)
             if (carry === 'net' && pose.loaded !== false) shape(ctx, handF, 8, 0, (lx, ly) => hypot(lx, ly) < 7 && ((round(lx + ly) & 3) === 0 || (round(lx - ly) & 3) === 0) && BONE[2])
+            // A round shield strapped to the front arm, wide enough to hide behind
+            if (carry === 'shield') shape(ctx, [handF[0] + 2, handF[1] - 1], 18, 0, (lx, ly) => {
+                const n = hypot(lx / 7.5, ly / 15)
+                if (n > 1) return
+                if (abs(lx) < 2 && abs(ly) < 4) return IRON[3]
+                return n > 0.86 ? IRON[1] : (round(ly) % 7 === 0 ? WOOD[1] : lx < -3 ? WOOD[3] : WOOD[2])
+            })
         },
     }
 }
@@ -434,13 +480,16 @@ function goblinAnimations(look, carry) {
     const walk = t => ({ ...stride(t * TAU, 0.7), y: round(-abs(sin(t * TAU)) * 1.5), lean: 0.1, armF: [1.2, 0.3], armB: carry === 'bow' ? [1, 1.4] : [0.6 * sin(t * TAU), 1] })
     const aim = d => ({ armF: [1.57, 0], armB: [1.4, 0.8 + d * 1.2], lean: -0.05 - d * 0.1, draw: d, legF: [0.4, 0.2], legB: [-0.4, 0.2] })
     const throwing = d => ({ armF: [-0.5 - d * 2, 0.8], armB: [0.5, 0.6], lean: -0.1 - d * 0.2, legF: [0.4, 0.2], legB: [-0.4, 0.2] })
-    const poseAt = carry === 'bow' ? aim : carry === 'net' ? throwing : d => ({ armF: [-0.4 - d * 1.6, 1.2], armB: [0.6, 0.6], lean: 0.2, legF: [0.5, 0.4], legB: [-0.4, 0.3] })
-    const hand = { armF: [1.2, 0.3], armB: carry === 'bow' ? [1, 1.4] : [0.2, 0.8] }
+    // The shieldman shoves with the shield instead of swinging
+    const shove = d => ({ armF: [1.3 - d * 0.6, 0.5 - d * 0.4], armB: [-0.3, 0.8], lean: -0.1 + d * 0.4, legF: [0.4 + d * 0.3, 0.3], legB: [-0.4 - d * 0.2, 0.3] })
+    const poseAt = carry === 'bow' ? aim : carry === 'net' ? throwing : carry === 'shield' ? shove : d => ({ armF: [-0.4 - d * 1.6, 1.2], armB: [0.6, 0.6], lean: 0.2, legF: [0.5, 0.4], legB: [-0.4, 0.3] })
+    const hand = { armF: carry === 'shield' ? [1.25, 0.6] : [1.2, 0.3], armB: carry === 'bow' ? [1, 1.4] : [0.2, 0.8] }
     const rest = { ...hand, lean: 0, head: 0, y: 0, legF: [0.15, 0.1], legB: [-0.15, 0.1] }
     // The pose right after the arrow, the net or the knife has left
     const released = carry === 'bow' ? { ...aim(0), lean: -0.2 }
         : carry === 'net' ? { armF: [1.8, 0.2], armB: [0.2, 0.6], lean: 0.25, legF: [0.6, 0.3], legB: [-0.4, 0.2] }
-            : { armF: [1.6, 0], armB: [-0.4, 0.6], lean: 0.35, legF: [0.7, 0.3], legB: [-0.5, 0.2] }
+            : carry === 'shield' ? { ...shove(1), lean: 0.4 }
+                : { armF: [1.6, 0], armB: [-0.4, 0.6], lean: 0.35, legF: [0.7, 0.3], legB: [-0.5, 0.2] }
     const blended = blend(humanoid, look)
     return {
         idle: standard(6, (ctx, t) => humanoid(ctx, look, { ...hand, y: sin(t * TAU) > 0 ? 1 : 0, head: 0.05 * sin(t * TAU), legF: [0.15, 0.1], legB: [-0.15, 0.1] })),
@@ -456,9 +505,9 @@ function goblinAnimations(look, carry) {
 }
 
 export function buildGoblin(kind) {
-    const carry = { archer: 'bow', looter: 'sack', poacher: 'net' }[kind]
-    const look = goblinLook({ archer: GOBLIN, looter: LOOTER, poacher: POACHER }[kind], carry)
-    return sheet(96, 80, 44, 74, goblinAnimations(look, carry))
+    const carry = { archer: 'bow', looter: 'sack', poacher: 'net', shieldman: 'shield' }[kind]
+    const look = goblinLook({ archer: GOBLIN, looter: LOOTER, poacher: POACHER, shieldman: SHIELDMAN }[kind], carry)
+    return sheet(96, 88, 44, 82, goblinAnimations(look, carry))
 }
 
 const SHAMAN = {
@@ -730,6 +779,316 @@ export function buildWolf(kind) {
 
 const k = kind => kind === 'alpha' ? 1.35 : 1
 
+// Yeti: a shaggy mountain brute with a leathery face, the chief bigger and crowned with bone
+function yetiLook(chief) {
+    const k = chief ? 1.18 : 1
+    const fur = chief ? ['#4f6474', '#7c93a4', '#b4cbd8', '#f2fbff'] : YETI
+    const hide = ['#241c28', '#3b3040', '#584a5e', '#7a6b80']
+    return {
+        thigh: 15 * k, shin: 13 * k, torso: 30 * k, shoulder: 5, neck: 10 * k, upper: 16 * k, fore: 15 * k, foot: 6,
+        legW: [16, 14, 12], bootW: 13, armW: [15, 13, 11], handR: 5.5, grip: 0,
+        ramps: { pants: fur, boots: fur, sleeve: fur, hand: fur },
+        back: { pants: darker(fur), boots: darker(fur), sleeve: darker(fur), hand: darker(fur) },
+        // A barrel chest under a coat that breaks into tufts along its edge
+        body(ctx, { hip, chest, lean }) {
+            const center = [(hip[0] + chest[0]) / 2, (hip[1] + chest[1]) / 2]
+            shape(ctx, center, 30 * k, lean, (lx, ly) => {
+                const half = (14 + (ly > -2 ? 2 - abs(ly - 3) * 0.15 : -(ly + 2) * 0.12)) * k
+                const tuft = abs(lx) < half + 3 && hash(round(lx), round(ly), 5) > 0.6
+                if ((abs(lx) > half && !tuft) || abs(ly) > 17 * k) return
+                if (abs(lx) > half - 1 || tuft) return fur[0]
+                if (abs(lx) < 5 && ly > -7) return fur[3]
+                return (round(lx * 0.8 + ly) & 3) === 0 ? fur[1] : fur[2]
+            })
+        },
+        face(ctx, { head, lean, pose }) {
+            shape(ctx, head, 20 * k, lean + (pose.head ?? 0), (lx, ly) => {
+                const n = hypot(lx, ly * 1.05) / (11 * k)
+                const horn = chief && abs(abs(lx + 1) - 8) < 2.2 && ly < -5 && ly > -17
+                if (n > 1 && !horn) return
+                if (horn) return ly < -12 ? BONE[3] : BONE[1]
+                if (abs(lx - 4) < 1.4 && ly > 3.5 && ly < 7) return '#ffffff'
+                if (lx > -1 && lx < 5 && ly > -2.5 && ly < 0) return abs(lx - 3.5) < 1 ? '#0d0a12' : (chief ? '#ff4a2f' : '#8fdcfa')
+                if (lx > -2 && lx < 9 && ly > -3.5 && ly < 6.5) return ly > 3 ? hide[0] : ly < -2.5 ? hide[3] : hide[2]
+                return ball(fur, lx / 11, ly / 11, n)
+            })
+        },
+    }
+}
+
+// The yeti opens its arms wide, closes them on the hero and shakes him
+export function buildYeti(chief) {
+    const look = yetiLook(chief)
+    const rest = { lean: 0.2, head: -0.1, legF: [0.3, 0.25], legB: [-0.3, 0.25], armF: [0.4, 0.5], armB: [-0.4, 0.5] }
+    const y = (count, pose) => frames(count, (ctx, t) => humanoid(ctx, look, { ...rest, ...pose(t) }))
+    const blended = blend(humanoid, look)
+    const size = chief ? 208 : 184
+    return sheet(size, size, size / 2, size - 14, {
+        idle: y(6, t => ({ armF: [0.4 + 0.06 * sin(t * TAU), 0.5], y: sin(t * TAU) > 0 ? 1 : 0 })),
+        walk: y(8, t => ({ ...stride(t * TAU, 0.45), lean: 0.25, armF: [0.5 + 0.35 * sin(t * TAU), 0.6], armB: [-0.5 - 0.35 * sin(t * TAU), 0.6], y: round(-abs(sin(t * TAU)) * 3) })),
+        windup: y(6, t => {
+            const u = ease(min(1, t * 1.2))
+            return { armF: [1.6 + u, 1.4 - u], armB: [1.4 + u, 1.4 - u], lean: -0.25 * u, head: -0.3 * u, y: 3 * u }
+        }),
+        attack: y(6, t => ({ armF: [1.9 - 0.6 * sin(t * TAU * 2), 0.2], armB: [1.7 - 0.6 * sin(t * TAU * 2), 0.2], lean: 0.2, head: -0.1, y: 2 })),
+        recover: y(6, t => ({ armF: [1.6 - 1.2 * t, 0.3 + 0.2 * t], armB: [-0.4, 0.5], lean: 0.2 - 0.1 * t })),
+        hurt: blended(6, [rest, { ...rest, lean: -0.3, head: -0.4, y: 2 }, rest]),
+        death: frames(8, (ctx, t) => humanoid(ctx, look, { ...rest, armF: [-1.2 * t, 0.4], armB: [-1 * t, 0.4], lean: 0.2 - 0.4 * t, head: -0.4, spin: -1.57 * min(1, t * 1.5), y: 32 * min(1, t * 1.5) })),
+        stun: y(6, t => ({ lean: 0.2 + 0.2 * sin(t * TAU), head: 0.4 * sin(t * TAU + 1), armF: [0.2, 0.6], armB: [-0.2, 0.6] })),
+        fall: y(6, t => ({ armF: [1.8 + 0.2 * sin(t * TAU), 0.4], armB: [-1.6, 0.4], legF: [0.5, 0.8], legB: [-0.3, 0.9] })),
+    })
+}
+
+// Frost bat: a small body slung between two membrane wings that beat through the frames
+const BAT = ['#1b2630', '#2f4454', '#4a6a80', '#6f94ac']
+
+function batArt(spread, open) {
+    return ctx => {
+        for (const side of [-1, 1]) {
+            const ramp = side < 0 ? darker(BAT) : BAT
+            const root = [side * 4, -14], tip = [side * (10 + 22 * spread), -20 - 8 * spread], low = [side * (7 + 12 * spread), -2 + 4 * spread]
+            const side3 = (a, b, p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+            shape(ctx, [0, -12], 40, 0, (lx, ly) => {
+                const p = [lx, ly - 12]
+                const s = [side3(root, tip, p), side3(tip, low, p), side3(low, root, p)]
+                return (s.every(v => v >= 0) || s.every(v => v <= 0)) && ramp[2]
+            })
+            limb(ctx, root, tip, 3, 2, ramp)
+            limb(ctx, tip, low, 2, 2, ramp)
+        }
+        shape(ctx, [0, -13], 10, 0, (lx, ly) => {
+            const n = hypot(lx / 4.5, ly / 8)
+            return n <= 1 && ((round(lx + ly) & 3) === 0 ? BAT[1] : ball(BAT, lx / 4.5, ly / 8, n))
+        })
+        shape(ctx, [2, -22], 9, 0, (lx, ly) => {
+            const n = hypot(lx, ly) / 5.5
+            const ear = abs(abs(lx + 1) - 3) < 1.2 && ly < -3 && ly > -10
+            if (n > 1 && !ear) return
+            if (ear) return BAT[1]
+            if (lx > 0 && lx < 3.5 && ly > -2.5 && ly < 0) return '#bff0ff'
+            if (open && ly > 1.5 && abs(lx - 1) < 3) return '#5a1a1a'
+            return ball(BAT, lx / 5.5, ly / 5.5, n)
+        })
+    }
+}
+
+export function buildBat() {
+    const flap = (count, open) => frames(count, (ctx, t) => batArt(0.2 + 0.8 * (0.5 + 0.5 * cos(t * TAU)), open)(ctx))
+    const still = open => [batArt(0.25, open)]
+    return sheet(112, 88, 56, 66, {
+        idle: flap(6, false),
+        walk: flap(6, false),
+        windup: frames(6, (ctx, t) => batArt(0.9 - 0.4 * t, true)(ctx)),
+        attack: still(true).concat(still(true)),
+        recover: flap(6, false),
+        hurt: still(true),
+        death: frames(6, (ctx, t) => batArt(max(0.1, 0.5 - t), true)(ctx)),
+        stun: flap(6, true),
+        fall: flap(4, false),
+    })
+}
+
+// Ice golem: slabs of ice hung on a frame, with a bright core in the chest. The guardian is the same build grown huge.
+const GOLEM = ['#1d4f68', '#2f7f9c', '#57b4cf', '#a8e6f4']
+
+function golemLook(k, core) {
+    return {
+        thigh: 11 * k, shin: 10 * k, torso: 24 * k, shoulder: 4, neck: 7 * k, upper: 13 * k, fore: 12 * k, foot: 5,
+        legW: [12 * k, 10 * k, 9 * k], bootW: 11 * k, armW: [11 * k, 10 * k, 9 * k], handR: 4.5 * k, grip: 0,
+        ramps: { pants: GOLEM, boots: GOLEM, sleeve: GOLEM, hand: GOLEM },
+        back: { pants: darker(GOLEM), boots: darker(GOLEM), sleeve: darker(GOLEM), hand: darker(GOLEM) },
+        // An angular block of a torso, its facets picked out by the light
+        body(ctx, { hip, chest, lean }) {
+            const center = [(hip[0] + chest[0]) / 2, (hip[1] + chest[1]) / 2]
+            shape(ctx, center, 30 * k, lean, (lx, ly) => {
+                const half = (16 - max(0, ly + 6) * 0.3) * k
+                if (abs(lx) > half || abs(ly) > 14 * k) return
+                if (core && hypot(lx, ly + 3) < 5 * k) return hypot(lx, ly + 3) < 3 * k ? '#ffffff' : '#bff0ff'
+                if (abs(lx) > half - 1) return GOLEM[0]
+                return (round(lx * 0.6 + ly * 0.4) % 5 === 0) ? GOLEM[1] : lx < -half + 3 ? GOLEM[3] : GOLEM[2]
+            })
+        },
+        face(ctx, { head, lean, pose }) {
+            shape(ctx, head, 16 * k, lean + (pose.head ?? 0), (lx, ly) => {
+                const n = max(abs(lx) / (8 * k), abs(ly) / (6.5 * k))
+                const spike = core && abs(abs(lx + 1) - 5 * k) < 1.4 * k && ly < -4 * k && ly > -10 * k
+                if (n > 1 && !spike) return
+                if (spike) return GOLEM[3]
+                if (abs(lx - 2.5) < 3 && ly > -2.5 && ly < 0.5) return abs(lx - 2.5) < 1 ? '#0a2a38' : (core ? '#ffe9a8' : '#bff0ff')
+                return n > 0.88 ? GOLEM[0] : ball(GOLEM, lx / (7 * k), ly / (7 * k), n)
+            })
+        },
+    }
+}
+
+export function buildGolem(kind) {
+    const { k, cell } = { golemling: { k: 0.6, cell: 96 }, golem: { k: 1, cell: 144 }, guardian: { k: 1.35, cell: 176 } }[kind]
+    const look = golemLook(k, kind === 'guardian')
+    const rest = { lean: 0.1, head: 0, legF: [0.2, 0.2], legB: [-0.2, 0.2], armF: [0.3, 0.4], armB: [-0.3, 0.4] }
+    const g = (count, pose) => frames(count, (ctx, t) => humanoid(ctx, look, { ...rest, ...pose(t) }))
+    const blended = blend(humanoid, look)
+    return sheet(cell, cell, cell / 2, cell - 10, {
+        idle: g(6, t => ({ armF: [0.3 + 0.05 * sin(t * TAU), 0.4], y: sin(t * TAU) > 0 ? 1 : 0 })),
+        walk: g(8, t => ({ ...stride(t * TAU, 0.35), lean: 0.12, armF: [0.4 + 0.25 * sin(t * TAU), 0.4], armB: [-0.4 - 0.25 * sin(t * TAU), 0.4], y: round(-abs(sin(t * TAU)) * 2) })),
+        windup: g(6, t => {
+            const u = ease(min(1, t * 1.2))
+            return { armF: [0.3 - 3.2 * u, 0.3], lean: 0.1 - 0.35 * u, head: -0.2 * u, y: 3 * u }
+        }),
+        attack: g(6, t => {
+            const u = min(1, t * 1.3)
+            return { armF: [-1.6 + 2.6 * u, 0.2], lean: 0.1 + 0.35 * u, y: 3 - 3 * u, legF: [0.5, 0.5], legB: [-0.4, 0.4] }
+        }),
+        recover: g(6, t => ({ armF: [1 - 0.7 * t, 0.4], lean: 0.45 - 0.35 * t })),
+        hurt: blended(6, [rest, { ...rest, lean: -0.25, head: -0.3, y: 1 }, rest]),
+        death: frames(8, (ctx, t) => humanoid(ctx, look, { ...rest, armF: [-1.4 * t, 0.3], armB: [-1.2 * t, 0.3], lean: -0.2, spin: -1.57 * min(1, t * 1.5), y: 26 * k * min(1, t * 1.5) })),
+        stun: g(6, t => ({ lean: 0.2 * sin(t * TAU), head: 0.3 * sin(t * TAU + 1) })),
+        fall: g(6, t => ({ armF: [1.7 + 0.2 * sin(t * TAU), 0.3], armB: [-1.5, 0.3], legF: [0.4, 0.7], legB: [-0.3, 0.8] })),
+    })
+}
+
+// Wraith: an empty hooded robe that hangs in the air, two cold lights where a face should be
+const WRAITH = ['#171a2e', '#2a2f52', '#474d84', '#7078bd']
+
+const WRAITH_LOOK = {
+    ...SHAMAN_LOOK,
+    ramps: { pants: WRAITH, boots: WRAITH, sleeve: WRAITH, hand: ['#3a4060', '#5b6390', '#8a92c8', '#c6cbf0'] },
+    back: { pants: darker(WRAITH), boots: darker(WRAITH), sleeve: darker(WRAITH), hand: darker(WRAITH) },
+    front: undefined,
+    // A robe that frays away into nothing below the knees
+    body(ctx, { hip, lean }) {
+        shape(ctx, hip, 26, lean * 0.5, (lx, ly) => {
+            const half = 6 + max(0, ly + 16) * 0.3
+            if (abs(lx) > half || ly < -19 || ly > 17) return
+            if (ly > 8 && hash(round(lx), round(ly), 6) > 1.1 - (17 - ly) * 0.09) return
+            return abs(lx) > half - 1 ? WRAITH[0] : lx < -half + 3 ? WRAITH[3] : (lx * 2 + ly) % 7 < 1 ? WRAITH[1] : WRAITH[2]
+        })
+    },
+    face(ctx, { head, lean, pose }) {
+        shape(ctx, head, 16, lean + (pose.head ?? 0), (lx, ly) => {
+            const n = hypot(lx, ly) / 9
+            if (n > 1) return
+            if (lx > -4 && ly > -3 && ly < 5 && abs(lx - 2) < 5) return (abs(lx - 1) < 1.2 || abs(lx - 5) < 1.2) && ly > -1 && ly < 1.5 ? '#9fe6ff' : '#05060c'
+            return n > 0.9 ? WRAITH[0] : ly < -5 ? WRAITH[3] : WRAITH[2]
+        })
+    },
+}
+
+export function buildWraith() {
+    const rest = { armF: [0.7, 1], armB: [-0.3, 0.8], legF: [0.05, 0], legB: [-0.05, 0] }
+    const w = (count, pose) => frames(count, (ctx, t) => humanoid(ctx, WRAITH_LOOK, { ...rest, ...pose(t) }))
+    return sheet(88, 104, 40, 98, {
+        idle: w(6, t => ({ y: round(sin(t * TAU) * 2), head: 0.06 * sin(t * TAU) })),
+        walk: w(8, t => ({ y: round(sin(t * TAU) * 3), lean: 0.08, armF: [0.9 + 0.2 * sin(t * TAU), 0.9] })),
+        windup: w(6, t => ({ armF: [0.7 + 1.6 * min(1, t * 1.2), 0.6], armB: [-0.3 - min(1, t * 1.2), 0.5], lean: -0.15, y: -2 })),
+        attack: w(6, t => ({ armF: [2.6 - 0.4 * t, 0.1], armB: [-1.3, 0.4], lean: 0.25, y: 0 })),
+        recover: w(6, t => ({ armF: [2.2 - 1.5 * t, 0.3 + 0.7 * t], lean: 0.2 - 0.2 * t })),
+        hurt: w(6, t => ({ lean: -0.3 * sin(t * PI), head: -0.3 * sin(t * PI) })),
+        death: frames(8, (ctx, t) => humanoid(ctx, WRAITH_LOOK, { ...rest, lean: -0.2, head: -0.3, y: -14 * t, armF: [2.4 * t, 0.4], armB: [-2.2 * t, 0.4] })),
+        stun: w(6, t => ({ lean: 0.2 * sin(t * TAU), head: 0.3 * sin(t * TAU + 1) })),
+        fall: w(6, t => ({ armF: [1.5 + 0.3 * sin(t * TAU), 0.3] })),
+    })
+}
+
+// Pike: a long fish that bursts out of the ice, all teeth and fins
+const PIKE = ['#1b2e1c', '#2f5a34', '#4f8a4a', '#8bbf6a']
+
+function pikeArt(wave, open) {
+    return ctx => {
+        shape(ctx, [0, -14], 36, 0, (lx, ly) => {
+            const bend = sin(lx * 0.1 + wave * TAU) * 2.5 * max(0, -lx / 26)
+            const half = lx > 12 ? 8 - (lx - 12) * 0.55 : 8 - max(0, -lx - 6) * 0.25
+            if (lx < -30 || lx > 26 || abs(ly - bend) > half) return
+            if (lx > 14 && open && ly - bend > -1) return ly - bend > 1.5 ? '#5a1a1a' : '#ffffff'
+            if (lx > 16 && abs(ly - bend) > half - 1.2) return BONE[3]
+            if (lx > 8 && lx < 13 && ly - bend > -4 && ly - bend < -1.5) return '#ffd23f'
+            if (ly - bend > half - 3) return PIKE[3]
+            return (round(lx * 0.5 + ly) & 3) === 0 ? PIKE[1] : ly - bend < -half + 2 ? PIKE[0] : PIKE[2]
+        })
+        const tail = sin(wave * TAU) * 7
+        limb(ctx, [-28, -14], [-38, -14 + tail], 6, 1, PIKE)
+        limb(ctx, [-28, -14], [-38, -14 - tail], 6, 1, PIKE)
+        for (const [x, y, dy] of [[-8, -20, -8], [-4, -8, 7], [8, -8, 6]]) limb(ctx, [x, y], [x - 4, y + dy], 4, 1, [PIKE[0], PIKE[1], PIKE[2], PIKE[2]])
+    }
+}
+
+export function buildPike() {
+    const swim = (count, open) => frames(count, (ctx, t) => pikeArt(t, open)(ctx))
+    return sheet(112, 72, 62, 50, {
+        idle: swim(6, false),
+        walk: swim(6, false),
+        windup: swim(6, true),
+        attack: swim(6, true),
+        recover: swim(6, false),
+        hurt: [pikeArt(0.25, true), pikeArt(0.75, true)],
+        death: frames(6, (ctx, t) => pikeArt(0.5 + t, true)(ctx)),
+        stun: swim(6, true),
+        fall: swim(4, true),
+    })
+}
+
+// The Winter Queen: a tall figure in a gown of frost under a crown of ice
+const QUEEN_ROBE = ['#0b1830', '#182f5c', '#2b5292', '#6b9ad8']
+const QUEEN_SKIN = ['#3f5a7c', '#6e88a8', '#9db6cf', '#dceaf6']
+
+const QUEEN_LOOK = {
+    ...SHAMAN_LOOK,
+    ramps: { pants: QUEEN_ROBE, boots: QUEEN_ROBE, sleeve: QUEEN_ROBE, hand: QUEEN_SKIN },
+    back: { pants: darker(QUEEN_ROBE), boots: darker(QUEEN_ROBE), sleeve: darker(QUEEN_ROBE), hand: darker(QUEEN_SKIN) },
+    front: undefined,
+    // A gown widening to a train, with a belt of frost at the waist
+    body(ctx, { hip, lean }) {
+        shape(ctx, hip, 28, lean * 0.4, (lx, ly) => {
+            const half = 5 + max(0, ly + 14) * 0.42
+            if (abs(lx) > half || ly < -20 || ly > 18) return
+            if (abs(ly + 1) < 2) return abs(lx) < 2 ? ICE[3] : ICE[1]
+            if (abs(lx) > half - 1) return QUEEN_ROBE[0]
+            return lx < -half + 3 ? QUEEN_ROBE[3] : (lx * 3 + ly) % 9 < 1 ? ICE[1] : QUEEN_ROBE[2]
+        })
+    },
+    // A pale face under a banded crown of ice, hair frozen into strands down her back
+    face(ctx, { head, lean, pose }) {
+        shape(ctx, head, 18, lean + (pose.head ?? 0), (lx, ly) => {
+            const n = hypot(lx, ly) / 9
+            const band = ly > -9 && ly < -6.5 && abs(lx + 1) < 8
+            const spike = ly > -13.5 && ly < -7 && [-6, -1, 4].some(x => abs(lx - x) < 1.7 + (ly + 7) * 0.2)
+            const tail = lx < -6 && lx > -12 && ly > -3 && ly < 6 - (lx + 6) * 0.8
+            const nose = lx > 7 && lx < 10 && ly > -1 && ly < 2
+            if (n > 1 && !band && !spike && !tail && !nose) return
+            if (spike) return ly < -11 ? '#ffffff' : ICE[2]
+            if (band) return abs(lx + 1) > 7 ? ICE[0] : ly < -8 ? ICE[3] : ICE[2]
+            if (tail) return (lx + ly) % 3 < 1 ? ICE[1] : ICE[2]
+            if (lx < -3.5) return n > 0.92 ? ICE[0] : (lx * 2 + ly) % 4 < 1 ? ICE[1] : ICE[3]
+            if (brow(pose.mood, lx, ly - 0.5)) return ICE[0]
+            if (lx > 2.5 && lx < 6 && ly > -2.5 && ly < 1.5) return lx > 5 && ly < -1 ? '#bff0ff' : '#0b2338'
+            if (mouth(pose.mood, lx, ly)) return '#2c4463'
+            if (lx > -2.5 && lx < 0 && ly > -1 && ly < 2.5) return QUEEN_SKIN[1]
+            return nose ? QUEEN_SKIN[2] : ball(QUEEN_SKIN, lx / 9, ly / 9, n)
+        })
+    },
+    // A mantle of frost hanging from her shoulders
+    behind(ctx, { chest, lean }) {
+        const root = along(chest, PI - lean, -2)
+        limb(ctx, root, [root[0] - 10, root[1] + 34], 10, 22, [ICE[0], ICE[1], ICE[2], ICE[3]])
+    },
+}
+
+export function buildQueen() {
+    const rest = { armF: [0.6, 0.8], armB: [-0.3, 0.6], legF: [0.05, 0], legB: [-0.05, 0] }
+    const q = (count, pose) => frames(count, (ctx, t) => humanoid(ctx, QUEEN_LOOK, { ...rest, ...pose(t) }))
+    return sheet(96, 112, 44, 106, {
+        idle: q(6, t => ({ y: sin(t * TAU) > 0 ? 1 : 0, head: 0.05 * sin(t * TAU) })),
+        walk: q(8, t => ({ ...stride(t * TAU, 0.25), ...rest, y: round(-abs(sin(t * TAU))), lean: 0.05 })),
+        windup: q(6, t => ({ armF: [0.6 + 2 * min(1, t * 1.2), 0.6 - 0.5 * min(1, t * 1.2)], armB: [-0.3 - min(1, t * 1.2), 0.5], lean: -0.12, head: -0.2 })),
+        attack: q(6, t => ({ armF: [2.7 + 0.15 * sin(t * TAU), 0.1], armB: [-1.4, 0.4], lean: 0.1, head: -0.25 })),
+        recover: q(6, t => ({ armF: [2.4 - 1.8 * t, 0.2 + 0.6 * t], armB: [-1.2 + 0.9 * t, 0.5], lean: -0.1 + 0.1 * t })),
+        hurt: q(6, t => ({ lean: -0.3 * sin(t * PI), head: -0.3 * sin(t * PI) })),
+        death: frames(8, (ctx, t) => humanoid(ctx, QUEEN_LOOK, { ...rest, lean: -0.2, head: -0.3, y: -20 * t, armF: [2.6 * t, 0.3], armB: [-2.2 * t, 0.3] })),
+        stun: q(6, t => ({ lean: 0.18 * sin(t * TAU), head: 0.28 * sin(t * TAU + 1) })),
+        fall: q(6, t => ({ armF: [1.6 + 0.2 * sin(t * TAU), 0.3] })),
+    })
+}
+
+
 const CHEST = ['#3a2210', '#6a4220', '#8a5a2b', '#b07a44']
 
 // A chest seen from the side, its lid lifted by open pixels and the whole box hopping when it is a mimic
@@ -814,6 +1173,11 @@ const quiver = (tip, feather) => ctx => {
 }
 const flat = color => [color[0], color[1], color[1], color[2]]
 
+const furIcon = ramp => ctx => shape(ctx, [0, 0], 15, 0, (lx, ly) => {
+    const inside = abs(lx) < 12 - max(0, ly - 4) && abs(ly) < 8 || (abs(abs(lx) - 9) < 3 && ly > 5 && ly < 12)
+    return inside && ((round(lx + ly) & 3) === 0 ? ramp[1] : ly < -5 ? ramp[3] : ramp[2])
+})
+
 const ICON_ART = {
     gold: ctx => {
         glass(ctx, [-4, 4], ['#6a4a10', '#c98f1c', '#f0c419', '#fff2a8'])
@@ -824,10 +1188,14 @@ const ICON_ART = {
         limb(ctx, [0, -9], [0, -4], 5, 5, ['#6f8a90', '#8fb0b8', '#b8d8e0', '#e8f8ff'])
         glass(ctx, [0, 4], ['#4a0a0e', '#9c1a20', '#d42a30', '#ff9a90'])
     },
-    fur: ctx => shape(ctx, [0, 0], 15, 0, (lx, ly) => {
-        const inside = abs(lx) < 12 - max(0, ly - 4) && abs(ly) < 8 || (abs(abs(lx) - 9) < 3 && ly > 5 && ly < 12)
-        return inside && ((round(lx + ly) & 3) === 0 ? FUR[1] : ly < -5 ? FUR[3] : FUR[2])
-    }),
+    fur: furIcon(FUR),
+    yetiFur: furIcon(YETI),
+    iceScale: ctx => {
+        for (const [x, y] of [[-6, 4], [5, 5], [0, -5]]) shape(ctx, [x, y], 10, 0, (lx, ly) => {
+            const n = hypot(lx / 7, ly / 8)
+            return n <= 1 && ly < 6 && (n > 0.85 ? SCALE[0] : lx < -2 && ly < 0 ? SCALE[3] : ly > 2 ? SCALE[1] : SCALE[2])
+        })
+    },
     fang: ctx => shape(ctx, [0, 0], 15, 0.4, (lx, ly) => {
         const half = 4 - (ly + 12) * 0.16
         return ly > -12 && ly < 12 && abs(lx + (ly + 12) * 0.12) < half && (lx < -1 ? BONE[3] : lx > 2 ? BONE[1] : BONE[2])
@@ -855,6 +1223,17 @@ const ICON_ART = {
             shape(ctx, [x + 1, 1], 9, a, (lx, ly) => lx > -3 && lx < 8 && abs(ly) < (lx > 4 ? (8 - lx) * 0.5 : 2) && (ly < 0 ? BLADE[3] : BLADE[1]))
         }
     },
+    pickaxe: ctx => {
+        limb(ctx, [-11, 12], [7, -6], 3, 3, WOOD)
+        limb(ctx, [5, -4], [13, -12], 4, 2, IRON)
+        limb(ctx, [9, 0], [14, 4], 5, 5, IRON)
+    },
+    harpoon: ctx => {
+        limb(ctx, [-13, 13], [8, -8], 3, 3, IRON)
+        limb(ctx, [8, -8], [13, -13], 5, 1, IRON)
+        for (const [x, y] of [[3, -9], [9, -3]]) limb(ctx, [x, y], [x - 5, y - 5], 2, 1, IRON)
+        for (let i = 0; i < 4; i++) limb(ctx, [-13 + i * 2, 13 - i * 4], [-9 + i * 2, 11 - i * 4], 1, 1, [BONE[1], BONE[1], BONE[2], BONE[2]])
+    },
     staff: ctx => {
         limb(ctx, [-12, 13], [6, -5], 3, 3, WOOD)
         shape(ctx, [9, -9], 7, -PI / 4, (lx, ly) => {
@@ -872,6 +1251,8 @@ const ICON_ART = {
     robe: ctx => torsoIcon(ctx, GEAR_CLOTHES.robe.vest, GEAR_CLOTHES.robe.shirt, false, true),
     cloak: ctx => capeIcon(ctx, FUR),
     shamanCloak: ctx => capeIcon(ctx, GEAR_CLOTHES.shamanCloak.cape, BONE),
+    yetiCloak: ctx => capeIcon(ctx, YETI, YETI),
+    scaleArmor: ctx => torsoIcon(ctx, SCALE, GEAR_CLOTHES.scaleArmor.shirt, true),
     gloves: ctx => {
         for (const x of [-6, 5]) {
             limb(ctx, [x, 8], [x, -2], 9, 8, LEATHER)
@@ -886,6 +1267,14 @@ const ICON_ART = {
             limb(ctx, [x, 8], [x + 9, 8], 7, 5, LEATHER)
         }
     },
+    // Boots under a frame of iron teeth that bite into the ice
+    crampons: ctx => {
+        for (const x of [-7, 3]) {
+            limb(ctx, [x, -9], [x, 5], 8, 8, LEATHER)
+            limb(ctx, [x, 7], [x + 9, 7], 7, 5, IRON)
+            for (const t of [0, 4, 8]) limb(ctx, [x - 2 + t, 10], [x - 2 + t, 13], 2, 1, IRON)
+        }
+    },
     ring: ctx => {
         shape(ctx, [0, 4], 11, 0, (lx, ly) => {
             const n = hypot(lx, ly * 1.2)
@@ -896,6 +1285,10 @@ const ICON_ART = {
     amulet: ctx => {
         for (const side of [-1, 1]) limb(ctx, [side * 9, -13], [0, 1], 2, 2, GOLD)
         glass(ctx, [0, 6], ['#0e2a70', '#2a55d6', '#5c85ff', '#c0d4ff'])
+    },
+    deepAmulet: ctx => {
+        for (const side of [-1, 1]) limb(ctx, [side * 9, -13], [0, 1], 2, 2, SCALE)
+        glass(ctx, [0, 6], ['#04202a', '#0e6070', '#2fa8b8', '#b8f4fa'])
     },
     alphaFang: ctx => {
         for (const side of [-1, 1]) limb(ctx, [side * 9, -13], [0, -4], 2, 2, LEATHER)
@@ -1063,6 +1456,7 @@ export function buildPortraits() {
     return {
         hero,
         merchant: cut(mood => sheet(96, 112, 48, 104, { face: [ctx => humanoid(ctx, MERCHANT_LOOK, { ...still, mood })] }), 40, 6),
+        queen: cut(mood => sheet(96, 112, 44, 106, { face: [ctx => humanoid(ctx, QUEEN_LOOK, { ...still, mood })] }), 40, 4),
         chief: Object.fromEntries(['calm', 'angry', 'worried'].map(mood => [mood, chiefPortrait(mood)])),
     }
 }

@@ -1,22 +1,9 @@
 // Renders public/og.png, the picture shown when a link to the game is shared.
 // A staged moment of a fight with the dev build of the game: the hero in legendary gear striking at the Alpha Wolf and an ogre.
 // Run with `npm run og`. Uses the Chrome given in CHROME, or any Chromium Playwright has downloaded (`npx playwright install chromium`).
-import { existsSync, readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { chromium } from 'playwright-core'
 import { createServer } from 'vite'
-
-// The Chromium this Playwright version expects, or the newest one already in the Playwright cache
-function findChrome() {
-    if (process.env.CHROME) return process.env.CHROME
-    if (existsSync(chromium.executablePath())) return chromium.executablePath()
-    const cache = join(homedir(), '.cache', 'ms-playwright')
-    const builds = existsSync(cache) ? readdirSync(cache).filter(name => name.startsWith('chromium-')).sort().reverse() : []
-    const found = builds.map(name => join(cache, name, 'chrome-linux64', 'chrome')).find(existsSync)
-    if (!found) throw new Error('No Chromium found, run `npx playwright install chromium` or set CHROME')
-    return found
-}
+import { findChrome } from './chrome.js'
 
 const browser = await chromium.launch({ executablePath: findChrome(), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] })
 const server = await createServer({ server: { port: 5198 }, logLevel: 'warn' })

@@ -1,12 +1,12 @@
 import * as THREE from 'three'
 import { DENSITY, TILE, view } from './const.js'
 import { buildStage } from './art.js'
-import { WORN, buildHero, buildGear, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildMimic, buildProjectiles, buildItems, buildStatuses, buildGlow, buildMarks, buildSpells, HERO_CLOTHES, GEAR_CLOTHES, CLOTHES } from './sprites.js'
-import { buildProps, buildTrees } from './art.js'
+import { WORN, buildHero, buildGear, buildOgre, buildWolf, buildGoblin, buildShaman, buildMerchant, buildBoard, buildChest, buildMimic, buildYeti, buildBat, buildGolem, buildWraith, buildPike, buildQueen, buildProjectiles, buildItems, buildStatuses, buildGlow, buildMarks, buildSpells, HERO_CLOTHES, GEAR_CLOTHES, CLOTHES } from './sprites.js'
+import { buildProps, buildTrees, buildTilePatches } from './art.js'
 import { turnFrame, normals, atlas } from './rig.js'
 import { SLOTS, ROLL_TIME, WHIRL_TIME, aimArrow, flyArrow, charge } from './player.js'
 import { GEAR_SLOTS, RARITIES } from './items.js'
-import { TYPES } from './enemies.js'
+import { TYPES, exposed } from './enemies.js'
 import { has } from './status.js'
 import { tileAt, groundBelow } from './terrain.js'
 import { hitboxes } from './dev.js'
@@ -18,9 +18,9 @@ THREE.ColorManagement.enabled = false
 const ORDER = { sky: 0, layers: 1, tiles: 10, reflections: 11, ice: 12, marks: 13, shadows: 14, props: 15, npc: 18, enemy: 20, hero: 21, gear: 22, grass: 23, pickup: 24, projectile: 25, glow: 26, particles: 27, bars: 28, snow: 29, foreground: 30, boxes: 31 }
 const NONE = [0, 0, 0, 0]
 // How the hero holds every weapon when he swings it
-const STYLES = { sword: 'slash', axe: 'heavy', spear: 'thrust', daggers: 'stab', staff: 'staff' }
+const STYLES = { sword: 'slash', axe: 'heavy', spear: 'thrust', daggers: 'stab', staff: 'staff', pickaxe: 'heavy' }
 // Where the blade ends, for the trail left by a swing
-const REACH = { sword: 44, axe: 40, spear: 70, daggers: 20, staff: 48 }
+const REACH = { sword: 44, axe: 40, spear: 70, daggers: 20, staff: 48, pickaxe: 38 }
 
 const BATCH_VERTEX = `
   attribute vec4 rect;
@@ -360,15 +360,20 @@ function pass(fragmentShader, uniforms) {
     return { scene, uniforms }
 }
 
+// The row of aiming frames that matches how steeply the bow points
+const aimRow = p => p.aim > 0.65 ? 'aimHigh' : p.aim < -0.05 ? 'aimLow' : 'aim'
+
 // Which animation of the hero plays and how far into it, from his state
 function heroMotion(p, game, deadT) {
     if (game.state === 'title') return ['sit', game.time / 3 % 1]
     if (game.state === 'dead') return ['death', deadT / 0.9]
+    if (p.grabbed) return ['grabbed', game.time * 2 % 1]
     if (p.rollT >= 0) return ['roll', p.rollT / ROLL_TIME]
     if (has(p, 'freeze')) return ['frozen', 0]
+    if (p.climbing) return ['ladder', p.y / 24 % 1]
     if (p.whirlT >= 0) return ['whirl', p.whirlT * 2 % 1]
     if (p.attackT >= 0) return [`${STYLES[p.gear.weapon.base]}${p.combo + 1}`, p.attackT / p.attackTime]
-    if (p.drawT >= 0) return SLOTS[p.slot] === 'bow' ? ['aim', charge(p) * 0.99] : ['cast', charge(p) * 0.4]
+    if (p.drawT >= 0) return SLOTS[p.slot] === 'bow' ? [aimRow(p), charge(p) * 0.99] : ['cast', charge(p) * 0.4]
     if (p.castT > 0) return ['cast', 1 - p.castT / 0.3]
     if (p.drinkT > 0) return ['drink', 1 - p.drinkT / 0.5]
     if (p.hurtT > 0.55) return ['hurt', (0.8 - p.hurtT) / 0.25]
@@ -419,7 +424,7 @@ export class Renderer {
         const spells = buildSpells()
         this.sheets = {
             hero: buildHero(), items: buildItems(), statuses: buildStatuses(), marks: buildMarks(), glow: { canvas: buildGlow(), cellW: 64, cellH: 64, originX: 32, originY: 32, frames: { glow: [{ x: 0, y: 0 }] } },
-            ...spells, board: buildBoard(), merchant: buildMerchant(), ...buildProjectiles(),
+            ...spells, board: buildBoard(), merchant: buildMerchant(), patches: buildTilePatches(), ...buildProjectiles(),
         }
         // Small sheets drawn together share one atlas texture
         const { items, statuses, marks, arrow, icicle, net, board } = this.sheets
@@ -427,7 +432,10 @@ export class Renderer {
         // Enemy sheets are painted when a stage with them is first entered
         this.builders = {
             ogre: () => buildOgre(false), chief: () => buildOgre(true), wolf: () => buildWolf('wolf'), alpha: () => buildWolf('alpha'), lynx: () => buildWolf('lynx'),
-            archer: () => buildGoblin('archer'), looter: () => buildGoblin('looter'), poacher: () => buildGoblin('poacher'), shaman: buildShaman, chest: buildChest, mimic: buildMimic,
+            archer: () => buildGoblin('archer'), looter: () => buildGoblin('looter'), poacher: () => buildGoblin('poacher'), shieldman: () => buildGoblin('shieldman'),
+            shaman: buildShaman, chest: buildChest, mimic: buildMimic, bat: buildBat, wraith: buildWraith, pike: buildPike, queen: buildQueen,
+            yeti: () => buildYeti(false), yetiChief: () => buildYeti(true),
+            golem: () => buildGolem('golem'), golemling: () => buildGolem('golemling'), guardian: () => buildGolem('guardian'),
         }
         const white = document.createElement('canvas')
         white.width = white.height = 1
@@ -563,6 +571,7 @@ export class Renderer {
         this.renderNpcs(game)
         for (const e of game.enemies) this.renderEnemy(game, e)
         this.renderScenery(game, camX, w, lights)
+        this.renderPatches(game)
         this.renderMarks(game)
         this.renderItems(game, lights)
         this.renderEffects(game, lights)
@@ -575,8 +584,9 @@ export class Renderer {
         Object.assign(this.snow.material.uniforms.cam.value, { x: camX, y: camY })
         this.snow.material.uniforms.area.value.set(w, h)
         this.snow.material.uniforms.time.value = this.time
-        // A blizzard blows over the title scene
-        this.snow.material.uniforms.wind.value += ((game.state === 'title' ? -90 : -6) - this.snow.material.uniforms.wind.value) * Math.min(1, dt)
+        // A blizzard blows over the title scene, and the gale of the peaks drives the snow across the slope
+        const wind = game.state === 'title' ? -90 : (game.stage.wind ?? 0) * 1.2 - 6
+        this.snow.material.uniforms.wind.value += (wind - this.snow.material.uniforms.wind.value) * Math.min(1, dt)
         this.snow.material.uniforms.scale.value = DENSITY * this.zoom
 
         for (const batch of this.batches.values()) for (const b of batch.values()) b.commit(this.time)
@@ -615,7 +625,7 @@ export class Renderer {
         const { hero } = this.sheets
         const [name, t] = heroMotion(p, game, this.deadT)
         const frames = hero.frames[name]
-        const frame = ['idle', 'run', 'stun', 'burn', 'netted', 'sit', 'whirl'].includes(name) ? cycle(frames, t) : pick(frames, t)
+        const frame = ['idle', 'run', 'stun', 'burn', 'netted', 'grabbed', 'ladder', 'sit', 'whirl'].includes(name) ? cycle(frames, t) : pick(frames, t)
         // The whirl spins by turning the hero around quickly
         const dir = p.whirlT >= 0 && Math.floor(p.whirlT * 12) % 2 ? -p.dir : p.dir
         const blink = p.hurtT > 0 && game.state === 'play' && Math.floor(game.time * 20) % 2
@@ -648,9 +658,10 @@ export class Renderer {
         if (['roll', 'death', 'netted', 'grabbed', 'sit', 'ladder', 'rope'].includes(name) || (slot === 'potion' && !p.bag.potion)) return this.trail = null
         const sheet = this.gear(base)
         const [x, y] = at(frame.hand)
-        if (name === 'aim') {
-            const drawn = sheet.drawn
-            this.batch(drawn, ORDER.gear).sprite(drawn, pick(drawn.frames.drawn, charge(p)), x, y, dir, tint, alpha)
+        if (name.startsWith('aim')) {
+            // The drawn bow turns to the angle the hero is aiming at
+            const drawn = pick(sheet.drawn, charge(p))
+            this.batch(drawn, ORDER.gear).sprite(drawn, turnFrame(drawn, -p.aim), x, y, dir, tint, alpha)
         } else {
             this.batch(sheet, ORDER.gear).sprite(sheet, turnFrame(sheet, frame.hand[2]), x, y, dir, tint, alpha)
         }
@@ -744,6 +755,8 @@ export class Renderer {
         const squash = e.hp <= 0 ? 0 : e.state === 'windup' ? 0.07 * Math.min(1, e.t / e.pattern.windup) : e.state === 'attack' && e.t < 0.12 ? -0.07 : 0
         this.batch(sheet, ORDER.enemy, { lit: true }).sprite(sheet, frame, e.x, e.y, e.dir, tint, alpha, false, [1 + squash, 1 - squash])
         if (e.hp > 0) this.shadow(game, e.x, e.y, e.w + 8)
+        // The Guardian's core burns through its chest once it has opened
+        if (exposed(e) && e.hp > 0) this.glow(e.x, e.y - e.h * 0.6, 34, '#bff0ff', 0.45 + Math.sin(this.time * 6) * 0.2)
         if (this.reflects(game, e)) this.batch(sheet, ORDER.reflections).sprite(sheet, frame, e.x, e.y, e.dir, [0.6, 0.85, 1, 0.3], 0.35, true)
         // Boss health is shown in the HUD, chests have none
         if (e.hp <= 0 || e.hp >= e.maxHp || type.boss || type.prop) return
@@ -777,6 +790,18 @@ export class Renderer {
             lights.push({ x: fire.x, y: fire.y - 16, radius: 150, color: [1, 0.65, 0.3], intensity: 0.9 + Math.sin(this.time * 13) * 0.1 })
             if (Math.random() < 0.3) this.particles.add({ x: fire.x + (Math.random() - 0.5) * 8, y: fire.y - 14, vx: (Math.random() - 0.5) * 10, vy: -30 - Math.random() * 30, life: 0.8, color: Math.random() < 0.5 ? '#f0c419' : '#f07a19', size: 1, gravity: -10, floor: 1e5 }, this.time)
         }
+    }
+
+    // Ice blocks still standing and the holes left where the sheet gave way, both drawn over the frozen tiles
+    renderPatches(game) {
+        const { patches } = this.sheets
+        const { cols } = game.map
+        const draw = (frame, spots, order) => {
+            const batch = this.batch(patches, order)
+            for (const i of spots) batch.sprite(patches, patches.frames[frame][0], (i % cols) * TILE, Math.floor(i / cols) * TILE)
+        }
+        draw('block', game.map.blocks, ORDER.ice + 0.4)
+        draw('hole', game.map.holes, ORDER.ice + 0.5)
     }
 
     // Footprints, blood and cracks stay on the ground for a while and fade

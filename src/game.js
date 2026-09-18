@@ -1,4 +1,4 @@
-import { view } from './const.js'
+import { TILE, view } from './const.js'
 import { input } from './input.js'
 import { sfx } from './sound.js'
 import { ITEMS, RARITIES, give, collect } from './items.js'
@@ -10,7 +10,7 @@ import { stat, updateStats } from './talents.js'
 import { afflict } from './status.js'
 import { createPlayer, updatePlayer, hurtPlayer, flyArrow, strike, carried } from './player.js'
 import { TYPES, createEnemy, updateEnemy, hurtEnemy, rollGroup } from './enemies.js'
-import { parseMap, moveBody, tileAt, isSolid, groundBelow, ceilingAbove, surface, box, overlap, bodyBox } from './terrain.js'
+import { parseMap, copyMap, moveBody, tileAt, isSolid, groundBelow, ceilingAbove, surface, box, overlap, bodyBox } from './terrain.js'
 import { loadProgress, saveProgress } from './save.js'
 import { TYPING, sceneLines } from './story.js'
 
@@ -38,11 +38,17 @@ export class Game {
         this.camX = this.player.x - view.w / 2
     }
 
+    // A fresh run from the first stage, opening with the scenes that set it up
+    newGame() {
+        this.startLevel(0)
+        this.tell(sceneLines('intro', 'forest'))
+    }
+
     // Resumes a saved checkpoint: the stage plus everything the hero carries
     continueGame() {
         if (!this.progress) return
         const { stage, ...hero } = this.progress
-        this.startLevel(stage, hero)
+        this.startLevel(Math.min(stage, LEVELS.length - 1), hero)
         this.tell(sceneLines(this.stage.theme))
     }
 
@@ -72,7 +78,7 @@ export class Game {
     startLevel(index, hero = createPlayer()) {
         this.level = index
         this.stage = LEVELS[index]
-        const map = this.map = this.stage.grid ??= parseMap(this.stage.map)
+        const map = this.map = copyMap(this.stage.grid ??= parseMap(this.stage.map))
         const spawns = kind => map.spawns.filter(spawn => spawn.kind === kind)
         this.random = rng(this.seed + index)
         const p = this.player = Object.assign(createPlayer(), carried(hero), spawns('hero')[0])
@@ -87,7 +93,11 @@ export class Game {
         this.panel = null
         this.npcs = [...spawns('board'), ...spawns('merchant')]
         this.enemies = map.spawns.filter(spawn => TYPES[spawn.kind] || spawn.kind === 'pool').flatMap(({ kind, x, y, budget }) => kind === 'pool'
-            ? rollGroup(this.stage.pool, budget, this.random).map((pick, i) => createEnemy(pick, x + i * 40, surface(map, x + i * 40, y), this.stage))
+            // Nobody in a group is put over a chasm, foes without ground under them close up on the marker instead
+            ? rollGroup(this.stage.pool, budget, this.random).map((pick, i) => {
+                const at = groundBelow(map, x + i * 40, y) === null ? x : x + i * 40
+                return createEnemy(pick, at, surface(map, at, y), this.stage)
+            })
             : [createEnemy(kind, x, y, this.stage)])
         this.roamers = 0
         this.roamT = 30
@@ -154,6 +164,15 @@ export class Game {
         this.icicles.push({ x, y: ceilingAbove(this.map, x, y, this.camY - 40), vx: 0, vy: 1, life: 3, floor: groundBelow(this.map, x, y) ?? this.map.h })
     }
 
+    // The middle of a hole in the ice near a spot, for whatever comes up through it
+    holeNear(x, range = 120) {
+        for (const i of this.map.holes) {
+            const hx = (i % this.map.cols + 0.5) * TILE
+            if (Math.abs(hx - x) < range) return { x: hx, y: Math.floor(i / this.map.cols) * TILE }
+        }
+        return null
+    }
+
     hitstop(time) {
         this.freeze = Math.max(this.freeze, time)
     }
@@ -198,13 +217,12 @@ export class Game {
         }
         if (!this.panel && ['title', 'dead', 'win'].includes(this.state) && input.hit('Enter', 'KeyR')) {
             if (this.state === 'dead') return this.startLevel(this.level, this.saved)
-            this.startLevel(0)
-            this.tell(sceneLines('intro', 'forest'))
-            return
+            return this.newGame()
         }
         if (this.state === 'play') {
             if (input.hit('KeyI')) this.toggle('bag')
             if (input.hit('KeyT')) this.toggle('talents')
+            if (input.hit('KeyB')) this.toggle('bestiary')
             if (input.hit('KeyE') && (this.panel || this.nearby())) this.panel = this.panel ? null : this.nearby().panel
             if (input.hit('Backquote')) {
                 this.dev ??= { god: false, boxes: false }
@@ -329,6 +347,8 @@ export class Game {
             const target = this.enemies.find(e => e.hp > 0 && !s.hitSet.has(e) && overlap(box(s.x - 4, s.y - 2, 8, 4), bodyBox(e)))
             if (target) {
                 strike(p, target, s.damage, Math.sign(s.vx), this, statuses)
+                // A harpoon drags whatever it sticks in back toward the hero
+                if (s.pull) target.vx = Math.sign(p.x - target.x) * 320
                 s.hitSet.add(target)
                 if (pierce) continue
                 if (this.random() < stat(p, 'recover')) give(p, s.ammo, 1)

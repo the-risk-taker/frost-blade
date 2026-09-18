@@ -8,6 +8,8 @@ export const ITEMS = {
   potion: {},
   fur: { value: 5 },
   fang: { value: 3 },
+  yetiFur: { value: 9 },
+  iceScale: { value: 7 },
   // Arrows give statuses on hit, piercing ones fly through foes
   arrows: { ammo: {} },
   iceArrows: { ammo: { statuses: { slow: 2.5 } } },
@@ -20,20 +22,29 @@ export const ITEMS = {
   daggers: { slot: 'weapon', value: 18, damage: 7, reach: 36, time: 0.16, stamina: 6, statuses: { bleed: 3 } },
   // The staff charges frost bolts into blasts and widens the nova
   staff: { slot: 'weapon', value: 25, damage: 9, reach: 44, time: 0.35, stamina: 10, spell: 6, nova: 0.5, charged: true },
+  // The pickaxe climbs ice walls and shatters ice blocks and the frozen lake
+  pickaxe: { slot: 'weapon', value: 22, damage: 18, reach: 44, time: 0.42, stamina: 16, climb: 1, crack: 1 },
   // Bows: time of a full draw and arrow damage
   bow: { slot: 'bow', value: 10, draw: 0.7, might: 1 },
   shortbow: { slot: 'bow', value: 15, draw: 0.35, might: 0.65 },
+  // The harpoon drags in whatever it hits
+  harpoon: { slot: 'bow', value: 30, draw: 0.6, might: 1.3, pull: 1 },
   helmet: { slot: 'head', value: 8, defense: 3 },
   hood: { slot: 'head', value: 6, defense: 1, warmth: 3 },
   armor: { slot: 'body', value: 20, defense: 7 },
   chainmail: { slot: 'body', value: 12, defense: 4, warmth: 1 },
   robe: { slot: 'body', value: 10, manaRegen: 8 },
+  scaleArmor: { slot: 'body', value: 24, defense: 6, thaw: 1, warmth: 1 },
   cloak: { slot: 'back', value: 6, staminaRegen: 20, warmth: 3 },
   shamanCloak: { slot: 'back', value: 12, manaRegen: 4, spell: 4, warmth: 2 },
+  yetiCloak: { slot: 'back', value: 26, defense: 2, warmth: 8, thaw: 1 },
   gloves: { slot: 'hands', value: 8, attackSpeed: 0.15 },
   boots: { slot: 'feet', value: 8, speed: 0.1, grip: 3, warmth: 1 },
+  // Crampons bite into the ice, so nothing slides and the mountain wind cannot push the hero around
+  crampons: { slot: 'feet', value: 18, grip: 8, anchor: 1, warmth: 2 },
   ring: { slot: 'ring', value: 15, crit: 0.05 },
   amulet: { slot: 'neck', value: 15, maxMana: 15 },
+  deepAmulet: { slot: 'neck', value: 22, maxMana: 10, depths: 8 },
   // Legendary uniques: a spirit wolf every third hit, more damage for a while after a kill
   alphaFang: { slot: 'neck', value: 40, unique: true, wolf: 3 },
   crown: { slot: 'head', value: 40, unique: true, defense: 3, frenzy: 0.3 },
@@ -102,7 +113,9 @@ export const OFFERS = [
   { item: 'spear', count: 1, cost: { gold: 40 } },
   { item: 'daggers', count: 1, cost: { gold: 40, fang: 2 } },
   { item: 'staff', count: 1, cost: { gold: 50, fang: 3 } },
+  { item: 'pickaxe', count: 1, cost: { gold: 50 } },
   { item: 'shortbow', count: 1, cost: { gold: 35 } },
+  { item: 'harpoon', count: 1, cost: { gold: 55, iceScale: 2 } },
   { item: 'helmet', count: 1, cost: { gold: 25 } },
   { item: 'hood', count: 1, cost: { fur: 2 } },
   { item: 'chainmail', count: 1, cost: { gold: 35 } },
@@ -110,8 +123,12 @@ export const OFFERS = [
   { item: 'robe', count: 1, cost: { gold: 20, fang: 3 } },
   { item: 'cloak', count: 1, cost: { fur: 3 } },
   { item: 'shamanCloak', count: 1, cost: { gold: 30, fang: 2 } },
+  { item: 'scaleArmor', count: 1, cost: { gold: 45, iceScale: 3 } },
+  { item: 'yetiCloak', count: 1, cost: { gold: 30, yetiFur: 2 } },
   { item: 'gloves', count: 1, cost: { gold: 20, fur: 1 } },
   { item: 'boots', count: 1, cost: { gold: 20, fur: 2 } },
+  { item: 'crampons', count: 1, cost: { gold: 30, fur: 2 } },
+  { item: 'deepAmulet', count: 1, cost: { gold: 40, iceScale: 2 } },
 ]
 
 export function give(p, item, count) {

@@ -97,6 +97,10 @@
     #overlay [data-language] { display: inline-block; margin-left: 4px; padding: 2px 6px; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
     #overlay [data-active] { color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8; }
     #overlay .menu span { cursor: pointer; }
+    /* Starting over and continuing are equal buttons side by side, never one more line of text */
+    #overlay .option { display: inline-block; min-width: 100px; margin: 2px 3px 4px; padding: 3px 10px; color: #ffe9a8; background: #3d2112; box-shadow: inset 0 0 0 1px #f0b46a; cursor: pointer; }
+    #overlay .option:hover { background: #6b3d22; }
+    #overlay .option em { display: block; font-style: normal; color: #c9b08a; }
     /* The title glows like ice with a glint running across it */
     #overlay.title h1 { font-size: 48px; color: transparent; background: linear-gradient(100deg, #8fdcfa 0%, #ffffff 20%, #bff0ff 30%, #4fa8d8 55%, #dff6ff 70%, #8fdcfa 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; text-shadow: none; filter: drop-shadow(3px 3px 0 #0a1a28) drop-shadow(0 0 6px #4fc3f780); animation: glint 4s linear infinite; }
     @keyframes glint { from { background-position: 100% 0; } to { background-position: -200% 0; } }
@@ -150,6 +154,9 @@
     /* Volumes keep the same width for every value, so the buttons stay in line */
     #panel .value { width: calc(var(--text) * 2.5); font-weight: normal; text-align: center; }
     #panel .close, #changelog .close { position: absolute; right: 8px; top: 6px; cursor: pointer; }
+    #panel .beast { align-items: flex-start; padding: 2px 4px; }
+    #panel .beast img { width: 24px; height: 24px; margin-right: 2px; image-rendering: pixelated; }
+    #panel .beast em { display: block; margin-top: 2px; color: #c9b08a; }
     .icon { display: inline-block; width: 16px; height: 16px; background-image: var(--items); background-size: var(--items-size); image-rendering: pixelated; }
     #panel .tree { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
     #panel .talent { min-height: 18px; margin-bottom: 3px; padding: 2px 3px; line-height: 1.1; box-shadow: inset 0 0 0 1px #6b3d22; cursor: pointer; }
@@ -210,7 +217,7 @@
       <div data-key="ArrowLeft" style="left: 12px; bottom: 16px">&lt;</div>
       <div data-key="ArrowDown" style="left: 64px; bottom: 16px">v</div>
       <div data-key="ArrowRight" style="left: 116px; bottom: 16px">&gt;</div>
-      <div data-key="KeyJ" class="big" style="right: 12px; bottom: 16px" data-text="btnUse"></div>
+      <div data-key="KeyJ" class="big" style="right: 12px; bottom: 16px" data-text="btnUse" data-aim></div>
       <div data-key="ArrowUp" style="right: 80px; bottom: 16px" data-text="btnJump"></div>
       <div data-key="KeyK" style="right: 18px; bottom: 84px" data-text="btnRoll"></div>
       <div id="skill" data-key="KeyQ" style="right: 132px; bottom: 16px" hidden></div>
@@ -219,6 +226,7 @@
       <div id="trade" data-key="KeyE" style="left: 12px; bottom: 76px" hidden></div>
       <div data-key="KeyI" class="small" style="left: 8px; top: 24px" data-text="btnBag"></div>
       <div data-key="KeyT" class="small" style="left: 56px; top: 24px" data-text="btnTalents"></div>
+      <div data-key="KeyB" class="small" style="left: 104px; top: 24px" data-text="btnBestiary"></div>
       <div data-key="Escape" class="small" style="right: 8px; top: 24px">II</div>
       <div id="fullscreen" data-key="KeyF" class="small" style="right: 36px; top: 24px" data-text="btnFullscreen"></div>
     </div>
@@ -226,6 +234,7 @@
     <div id="changelog" hidden>
       <div class="close">X</div>
       <h2>CHANGELOG</h2>
+      <h3>v0.0.11 - North</h3><p>Two new regions: the Icy Peaks with wind that pushes you off the slope, ice walls climbed with a pickaxe and the Yeti Chief, and the Frozen Lake where heavy blows shatter the sheet into holes. New foes: the Frozen Guardian with a core that opens at half health, yetis that grab and throw you, frost bats, mountain shieldmen, splitting ice golems, blinking wraiths and pikes bursting out of the ice. The bow aims at any angle, the harpoon drags foes in. Crampons, yeti cloak, scale armor and the Amulet of the Deep. Act two of the story ends with the Winter Queen, and a bestiary records every foe you meet.</p>
       <h3>v0.0.10 - New Look</h3><p>Hand shaped pixel art for every character, every weapon and armor piece drawn on the hero, full animation sets with squash and stretch, animated spell effects. Story scenes with dialogues, portraits and illustrated boards. Tile terrain with platforms, walls and chasms, camera moving both ways. Parallax backgrounds, 2D lighting, bloom, reflections on ice, footprints and blood on snow. New interface with portraits, settings with graphics quality, difficulty, key binding, gamepad and accessibility options. Installable and playable offline.</p>
       <h3>v0.0.9 - Arsenal</h3><p>Axe, spear, daggers, frost staff and short bow. Ice, fire and piercing arrows. Gear rarity with random bonuses, legendary Alpha Fang and Chief's Crown. Gloves, boots, ring and amulet slots. Item comparison. New foes: mimic, looter, snow lynx, poacher.</p>
       <h3>v0.0.8 - Talents</h3><p>Talent tree with Warrior, Hunter and Frost branches and active skills. Random enemy spawns, area levels, bleeding, burning and other status effects.</p>

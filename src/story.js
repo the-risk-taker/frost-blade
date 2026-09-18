@@ -25,10 +25,24 @@ export const SCENES = {
         { who: 'hero', mood: 'angry' },
         { who: 'chief', mood: 'angry' },
     ],
-    end: [
+    // Act two: the chief was only a vassal, the road goes on north over the peaks to the lake
+    peaks: [
         { who: 'hero', mood: 'worried' },
+        { who: 'narrator', board: 'peaks' },
+        { who: 'merchant', mood: 'worried' },
+        { who: 'hero', mood: 'angry' },
+    ],
+    lake: [
         { who: 'narrator', board: 'queen' },
+        { who: 'merchant', mood: 'worried' },
         { who: 'hero', mood: 'calm' },
+    ],
+    end: [
+        { who: 'queen', mood: 'calm' },
+        { who: 'hero', mood: 'angry' },
+        { who: 'queen', mood: 'angry' },
+        { who: 'queen', mood: 'calm' },
+        { who: 'hero', mood: 'worried' },
     ],
 }
 

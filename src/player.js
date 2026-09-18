@@ -4,7 +4,7 @@ import { TYPES, hurtEnemy } from './enemies.js'
 import { stat, updateStats, noTalents } from './talents.js'
 import { ITEMS, GEAR_SLOTS, createItem, worn } from './items.js'
 import { areaScale } from './levels.js'
-import { moveBody, onIce, onPlatform, isSolid, tileAt, box, overlap, bodyBox } from './terrain.js'
+import { moveBody, onIce, onPlatform, isSolid, tileAt, groundBelow, breakTile, box, overlap, bodyBox } from './terrain.js'
 import { afflict, has, tickStatuses } from './status.js'
 import { t } from './lang.js'
 import { settings, DIFFICULTIES } from './settings.js'
@@ -20,6 +20,9 @@ export const WHIRL_TIME = 0.5
 export const WHIRL_REACH = 48
 export const XP_PER_LEVEL = 100
 export const NOVA_REACH = 100
+// How steeply the bow can be aimed, and where it points when nothing is asked of it
+export const AIM_RANGE = [-0.85, 1.35]
+export const FLAT_AIM = 0.29
 
 const SPEED = 125
 const JUMP = 330
@@ -28,6 +31,8 @@ const MAX_FALL = 600
 const ARROW_GRAVITY = 520
 const ROLL_SPEED = 250
 const STAFF_CHARGE = 0.8
+const CLIMB_SPEED = 90
+const GRAB_TIME = 1.4
 const DROP_KEYS = ['ArrowDown', 'KeyS']
 const JUMP_KEYS = ['ArrowUp', 'KeyW']
 const USE_KEYS = ['Space', 'KeyJ', 'Mouse0']
@@ -38,7 +43,7 @@ export function createPlayer() {
         combo: 0, landT: 0, castT: 0, drinkT: 0, stepX: 0,
         hp: 100, maxHp: 100, mana: 100, maxMana: 100, stamina: 100, restT: 0,
         xp: 0, level: 1, power: 0, talents: noTalents(), skill: null, resets: 0,
-        slot: 0, cooldown: 0, skillT: 0, hits: 0, pity: 0,
+        slot: 0, cooldown: 0, skillT: 0, hits: 0, pity: 0, aim: FLAT_AIM, climbing: false, grabbed: null, grabT: 0,
         bag: { gold: 10, arrows: 10, potion: 3 }, quiver: 'arrows', pack: [],
         gear: { ...Object.fromEntries(GEAR_SLOTS.map(slot => [slot, null])), weapon: createItem('sword'), bow: createItem('bow') },
         attackT: -1, attackTime: 0, chill: false, hitSet: new Set(), rollT: -1, whirlT: -1, hurtT: 0, drawT: -1, shieldT: 0, statuses: {},
@@ -80,10 +85,26 @@ export function canUse(p, item) {
 // How far the bow is drawn or the staff charged, from 0 to 1
 export const charge = p => Math.min(1, p.drawT / (SLOTS[p.slot] === 'bow' ? worn(p, 'bow').draw : STAFF_CHARGE))
 
-// Arrow leaving the bow. The longer the string is drawn, the faster and farther it flies.
+// Arrow leaving the bow, along the angle it was aimed at. The longer the string is drawn, the faster and farther it flies.
 export function aimArrow(p) {
     const speed = 180 + 340 * charge(p)
-    return { x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * speed, vy: -speed * 0.3, damage: Math.round((8 + 16 * charge(p)) * worn(p, 'bow').might) + p.power, ammo: p.quiver }
+    const bow = worn(p, 'bow')
+    return {
+        x: p.x + p.dir * 12, y: p.y - 23, vx: p.dir * Math.cos(p.aim) * speed, vy: -Math.sin(p.aim) * speed,
+        damage: Math.round((8 + 16 * charge(p)) * bow.might) + p.power, ammo: p.quiver, pull: bow.pull,
+    }
+}
+
+// Up and down turn the bow while it is drawn, a finger dragged off the attack button aims straight at a spot
+function takeAim(p, dt) {
+    const drag = input.drag()
+    if (drag && Math.hypot(...drag) > 10) {
+        p.dir = Math.sign(drag[0]) || p.dir
+        p.aim = Math.atan2(-drag[1], Math.abs(drag[0]))
+    } else {
+        p.aim += (input.held(...JUMP_KEYS) - input.held(...DROP_KEYS)) * 1.9 * dt
+    }
+    p.aim = Math.max(AIM_RANGE[0], Math.min(AIM_RANGE[1], p.aim))
 }
 
 export function flyArrow(a, dt) {
@@ -100,7 +121,7 @@ export const whirlBox = p => box(p.x - WHIRL_REACH, p.y - 40, WHIRL_REACH * 2, 4
 // Legendary gear calls a spirit wolf every few hits and raises damage for a while after a kill.
 export function strike(p, e, damage, dir, game, statuses = {}, melee = false) {
     const crit = game.random() < stat(p, 'crit')
-    const dealt = Math.round(damage * (crit ? 2 : 1) * (has(p, 'frenzy') ? 1 + stat(p, 'frenzy') : 1) * DIFFICULTIES[settings.difficulty].dealt)
+    const dealt = game.dev?.god ? e.hp : Math.round(damage * (crit ? 2 : 1) * (has(p, 'frenzy') ? 1 + stat(p, 'frenzy') : 1) * DIFFICULTIES[settings.difficulty].dealt)
     hurtEnemy(e, dealt, dir, game, statuses)
     if (crit) {
         game.popup(e.x, e.y - e.h - 30, t('crit'), '#ff9a3c')
@@ -130,6 +151,19 @@ function refill(p) {
     else p.slot = SLOTS.indexOf('weapon')
 }
 
+// Heavy tools shatter what is in front of the hero: an ice block, or the frozen lake into a hole
+function crackIce(p, game) {
+    const x = p.x + p.dir * 22
+    const floor = groundBelow(game.map, x, p.y - 8)
+    const broken = breakTile(game.map, x, p.y - 22) ?? breakTile(game.map, x, p.y - 6) ?? (floor !== null && breakTile(game.map, x, floor))
+    if (!broken) return
+    game.burst(broken.x, broken.y, '#bff0ff', 22, 170)
+    game.effect('shatter', broken.x, broken.y - 6, 0.9, 0.4)
+    game.shake = 6
+    sfx.shatter()
+    hint(game, broken.char === 'X' ? 'Block' : 'Hole')
+}
+
 // Health loss from any source, the hero falls when it runs out. God mode from the dev panel ignores it.
 function loseHp(p, damage, game) {
     if (game.dev?.god) return
@@ -150,7 +184,8 @@ export function hurtPlayer(p, damage, dir, game, statuses = {}) {
         sfx.shatter()
         return true
     }
-    for (const [name, time] of Object.entries(statuses)) afflict(p, name, time)
+    // Scales and yeti fur shrug off the worst of the cold
+    for (const [name, time] of Object.entries(statuses)) afflict(p, name, name === 'freeze' ? time / (1 + stat(p, 'thaw')) : time)
     if (statuses.freeze) game.effect('shatter', p.x, p.y - 18, 0.7, 0.35)
     // Foes in higher areas and on harder difficulty hit harder
     loseHp(p, Math.max(1, Math.round(damage * areaScale(game.stage) * DIFFICULTIES[settings.difficulty].taken) - stat(p, 'defense')), game)
@@ -181,6 +216,7 @@ function useItem(p, item, game) {
         } else {
             p.stamina -= worn(p, 'weapon').stamina
             p.restT = 0.6
+            if (worn(p, 'weapon').crack) crackIce(p, game)
         }
         p.attackT = 0
         // Swings go through the three blows of the combo in turn
@@ -255,9 +291,30 @@ export function updatePlayer(p, dt, game) {
     p.restT -= dt
     p.shieldT -= dt
     if (p.restT <= 0) p.stamina = Math.min(100, p.stamina + (30 + stat(p, 'staminaRegen')) * dt)
-    p.mana = Math.min(p.maxMana, p.mana + (6 + stat(p, 'manaRegen')) * dt)
+    // The Amulet of the Deep draws mana from the water under the ice
+    p.mana = Math.min(p.maxMana, p.mana + (6 + stat(p, 'manaRegen') + (onIce(game.map, p) ? stat(p, 'depths') : 0)) * dt)
     const dot = tickStatuses(p, dt)
     if (dot) loseHp(p, dot, game)
+
+    // A yeti holding the hero shakes him until he rolls free, otherwise it hurls him away
+    if (p.grabbed) {
+        const holder = p.grabbed
+        p.grabT += dt
+        Object.assign(p, { x: holder.x + holder.dir * 20, y: holder.y - 22, vx: 0, vy: 0 })
+        const freed = input.hit('ShiftLeft', 'ShiftRight', 'KeyK')
+        hint(game, 'Grab')
+        if (!freed && p.grabT < GRAB_TIME && holder.hp > 0 && !has(holder, 'freeze')) return
+        p.grabbed = null
+        if (freed || holder.hp <= 0 || has(holder, 'freeze')) {
+            game.burst(p.x, p.y - 16, '#eef7fa', 14, 120)
+            return sfx.roll()
+        }
+        p.hurtT = 0
+        hurtPlayer(p, 20, -holder.dir, game)
+        p.vx = -holder.dir * 320
+        p.vy = -280
+        return
+    }
 
     const slot = p.slot
     for (let i = 0; i < 9; i++) if (input.hit('Digit' + (i + 1))) p.slot = i
@@ -269,21 +326,31 @@ export function updatePlayer(p, dt, game) {
     // A frozen hero can't act at all, a rooted one can't move but still fights
     const stunned = p.hurtT > 0.55 || has(p, 'freeze')
     const rooted = has(p, 'root')
-    if (p.rollT >= 0) {
+    // With the pickaxe in hand the hero hangs on an ice wall and climbs it, held there until he lets go
+    const wall = stat(p, 'climb') && !stunned && p.rollT < 0 && [1, -1].find(side => tileAt(game.map, p.x + side * (p.w / 2 + 3), p.y - 16) === 'I')
+    const letGo = input.hit('ShiftLeft', 'ShiftRight', 'KeyK') || (p.onGround && input.held(...DROP_KEYS))
+    p.climbing = Boolean(wall) && !letGo && (p.climbing || input.held(...JUMP_KEYS))
+    if (p.climbing) {
+        p.dir = wall
+        p.vx = move * 60
+        p.vy = (input.held(...DROP_KEYS) - input.held(...JUMP_KEYS)) * CLIMB_SPEED
+        hint(game, 'Climb')
+    } else if (p.rollT >= 0) {
         p.rollT += dt
         p.vx = p.dir * ROLL_SPEED
         if (p.rollT > ROLL_TIME) p.rollT = -1
         // With the ice trail talent the roll leaves frost behind
         if (stat(p, 'trail') && p.onGround && Math.abs((game.trails.at(-1)?.x ?? -100) - p.x) > 8) game.trails.push({ x: p.x, y: p.y, life: 3 })
     } else {
-        const target = stunned || rooted || (p.attackT >= 0 && p.onGround) || p.drawT >= 0 ? 0 : move * SPEED * (1 + stat(p, 'speed')) * (has(p, 'slow') ? 0.6 : 1)
+        const target = stunned || rooted || (p.attackT >= 0 && p.onGround) || p.drawT >= 0 ? 0 : move * SPEED * (1 + stat(p, 'speed')) * (game.dev?.god ? 2 : 1) * (has(p, 'slow') ? 0.6 : 1)
         // Ice gives little grip, so the hero slides when he starts and stops. Good boots grip better.
         p.vx += (target - p.vx) * Math.min(1, dt * (stunned ? 3 : p.onGround && onIce(game.map, p) ? 1.5 + stat(p, 'grip') : 14))
         if (!stunned) {
             if (move && p.attackT < 0) p.dir = move
-            // Down drops through the platform under the hero
-            if (input.hit(...DROP_KEYS) && p.onGround && !rooted && onPlatform(game.map, p)) p.dropT = 0.25
-            if (input.hit(...JUMP_KEYS) && p.onGround && !rooted) {
+            // Down drops through the platform under the hero, while the bow is drawn up and down aim it instead
+            if (p.drawT >= 0 && SLOTS[p.slot] === 'bow') takeAim(p, dt)
+            else if (input.hit(...DROP_KEYS) && p.onGround && !rooted && onPlatform(game.map, p)) p.dropT = 0.25
+            if (input.hit(...JUMP_KEYS) && p.onGround && !rooted && p.drawT < 0) {
                 p.vy = -JUMP
                 p.onGround = false
                 sfx.jump()
@@ -350,7 +417,9 @@ export function updatePlayer(p, dt, game) {
     }
 
     p.dropT -= dt
-    p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * dt)
+    if (!p.climbing) p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * dt)
+    // The mountain wind leans on the hero in gusts, crampons bite into the ice and hold him where he stands
+    if (game.stage.wind && !stat(p, 'anchor') && !p.climbing) p.vx += game.stage.wind * (0.7 + 0.3 * Math.sin(game.time * 0.7)) * dt
     const falling = !p.onGround
     moveBody(p, dt, game.map, { step: true, drop: p.dropT > 0 })
     if (p.onGround && falling) {

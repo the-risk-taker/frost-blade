@@ -1,19 +1,28 @@
 import { TILE } from './const.js'
 
-// Map legend: . air, # rock, ~ ice, = platform that holds only from above, v icicle hanging from the ceiling.
+// Map legend: . air, # rock, ~ ice, I ice wall climbed with the pickaxe, X ice block the pickaxe breaks,
+// = platform that holds only from above, v icicle hanging from the ceiling.
 // The other marks stand on the tile they are drawn in: @ hero start, B quest board, M merchant, c chest,
-// w wolf, o ogre, a archer, s shaman, A Alpha, K Chief, 1-9 random group from the stage pool with that budget.
-const MARKS = { '@': 'hero', B: 'board', M: 'merchant', v: 'trap', c: 'chest', w: 'wolf', o: 'ogre', a: 'archer', s: 'shaman', A: 'alpha', K: 'chief' }
+// w wolf, o ogre, a archer, s shaman, A Alpha, K Chief, G Guardian, Y Yeti Chief, Q Winter Queen,
+// 1-9 random group from the stage pool with that budget.
+const MARKS = { '@': 'hero', B: 'board', M: 'merchant', v: 'trap', c: 'chest', w: 'wolf', o: 'ogre', a: 'archer', s: 'shaman', A: 'alpha', K: 'chief', G: 'guardian', Y: 'yetiChief', Q: 'queen' }
 
 export function parseMap(rows) {
     const spawns = []
+    const blocks = []
     const tiles = rows.map((row, ty) => [...row].map((char, tx) => {
+        if (char === 'X') blocks.push(ty * rows[0].length + tx)
         const kind = MARKS[char] ?? (char > '0' && char <= '9' ? 'pool' : null)
         if (!kind) return char
         spawns.push({ kind, x: (tx + 0.5) * TILE, y: (kind === 'trap' ? ty : ty + 1) * TILE, budget: Number(char) })
         return '.'
     }))
-    return { tiles, cols: rows[0].length, rows: rows.length, w: rows[0].length * TILE, h: rows.length * TILE, spawns }
+    return { tiles, cols: rows[0].length, rows: rows.length, w: rows[0].length * TILE, h: rows.length * TILE, spawns, blocks }
+}
+
+// A stage gets its own copy of the tiles, so ice broken into holes and shattered blocks last only for this run
+export function copyMap(map) {
+    return { ...map, tiles: map.tiles.map(row => [...row]), blocks: new Set(map.blocks), holes: new Set() }
 }
 
 // The map sides are walls, above and below it is open air
@@ -23,10 +32,22 @@ export function tileAt(map, x, y) {
     return map.tiles[Math.floor(y / TILE)]?.[tx] ?? '.'
 }
 
-export const solid = char => char === '#' || char === '~'
+export const solid = char => char === '#' || char === '~' || char === 'I' || char === 'X'
 export const isSolid = (map, x, y) => solid(tileAt(map, x, y))
 export const onIce = (map, b) => tileAt(map, b.x, b.y + 1) === '~'
 export const onPlatform = (map, b) => tileAt(map, b.x, b.y + 1) === '='
+
+// Turns a tile into air: ice cracks into a hole to fall through, an ice block shatters away.
+// Returns the middle of the tile that gave way, or nothing when there was none.
+export function breakTile(map, x, y) {
+    const char = tileAt(map, x, y)
+    if (char !== '~' && char !== 'X') return null
+    const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE)
+    map.tiles[ty][tx] = '.'
+    if (char === '~') map.holes.add(ty * map.cols + tx)
+    else map.blocks.delete(ty * map.cols + tx)
+    return { x: (tx + 0.5) * TILE, y: ty * TILE, char }
+}
 
 // Points along a span, one for every tile it crosses
 function samples(from, to) {

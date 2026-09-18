@@ -1,6 +1,6 @@
 {
     "name": "mrozne-ostrze",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "private": true,
     "type": "module",
     "scripts": {
@@ -9,6 +9,7 @@
         "preview": "vite preview",
         "deploy": "vite build && wrangler deploy",
         "test": "node --test test/*.test.js",
+        "perf": "node scripts/perf.js",
         "og": "node scripts/og.js"
     },
     "devDependencies": {

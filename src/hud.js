@@ -1,6 +1,7 @@
 import { view } from './const.js'
 import { SLOTS, SKILLS, SKILL_KEY, COOLDOWNS, canUse } from './player.js'
 import { TYPES } from './enemies.js'
+import { bestiary } from './bestiary.js'
 import { ITEMS, OFFERS, GEAR_SLOTS, PACK_SIZE, PERCENT, RARITIES, bonuses, createItem, price, canBuy, buy, sell, equip, unequip } from './items.js'
 import { TALENTS, stat, points, pickTalent, resetCost, canReset, resetTalents } from './talents.js'
 import { LEVELS } from './levels.js'
@@ -45,7 +46,7 @@ const formatTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(s
 const summaryLine = game => t('summary', { time: formatTime(game.playTime), kills: game.totalKills, gold: game.player.bag.gold })
 
 // Actions that can be bound to other keys, by the key the game listens for
-const ACTIONS = { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', down: 'ArrowDown', roll: 'ShiftLeft', use: 'Space', freeze: 'KeyX', shield: 'KeyC', skill: 'KeyQ', bag: 'KeyI', talents: 'KeyT', talk: 'KeyE' }
+const ACTIONS = { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', down: 'ArrowDown', roll: 'ShiftLeft', use: 'Space', freeze: 'KeyX', shield: 'KeyC', skill: 'KeyQ', bag: 'KeyI', talents: 'KeyT', bestiary: 'KeyB', talk: 'KeyE' }
 
 // Keys pressed for an action: those bound to it plus its own key unless that one was bound elsewhere
 const keysFor = code => [...Object.keys(settings.keys).filter(key => settings.keys[key] === code), ...(settings.keys[code] ?? code) === code ? [code] : []]
@@ -54,7 +55,7 @@ const keysFor = code => [...Object.keys(settings.keys).filter(key => settings.ke
 // The text itself is typed in by update().
 function storyLines(game, art) {
     const { who, mood, board } = game.scene.lines[game.scene.line]
-    const name = who === 'narrator' ? '' : `<b>${t(who === 'chief' ? 'enemy.chief' : `speaker.${who}`)}</b>`
+    const name = who === 'narrator' ? '' : `<b>${t(`speaker.${who}`)}</b>`
     const portrait = who === 'narrator' ? '' : `<img src="${art.portraits[who][mood]}">`
     const picture = board ? `<img class="board" src="${art.boards[board]}">` : ''
     return ['', `${picture}<div class="dialog ${who}">${portrait}<div>${name}<p id="line"></p><em id="next">${t('next', { key: touch ? t('tap') : 'ENTER' })}${touch ? '' : ` &nbsp; ${t('skip')}`}</em></div></div>`]
@@ -66,11 +67,16 @@ function overlayLines(game, art) {
     const start = touch ? t('tap') : 'ENTER'
     const retry = touch ? t('tap') : 'R'
     const controls = touch ? [t('hintTouch')] : [t('keysMove'), t('keysUse'), t('keysSkills'), t('keysMenu')]
-    // An empty data-key keeps a tap on a language (or continue) from also starting a new game
+    // An empty data-key keeps a tap on a menu option from also starting a new game
     const languages = LANGUAGES.map(code => `<span data-language="${code}" data-key="" ${code === language() ? 'data-active' : ''}>${languageName(code)}</span>`).join(' ')
-    const continueLine = game.progress ? [`<span data-continue data-key="">${t('continueGame', { key: touch ? t('tap') : 'C' })}</span>`] : []
+    // Starting over and resuming are the same kind of choice, so both are buttons saying where they drop the hero
+    const saved = game.progress
+    const option = (attribute, label, key, stage, level) =>
+        `<span class="option" ${attribute} data-key="">${t(label, { key })}<em>${t(`stage.${stage.theme}`)} &nbsp; ${t('level', { level })}</em></span>`
+    const menu = [option('data-start', 'start', start, LEVELS[0], 1)]
+    if (saved) menu.push(option('data-continue', 'continueGame', touch ? t('tap') : 'C', LEVELS[saved.stage] ?? LEVELS[0], saved.level))
     return {
-        title: [t('title'), t('storyIntro'), ...controls, t('goal'), t('start', { key: start }), ...continueLine, `<span data-open="settings" data-key="">${t('openSettings', { key: touch ? t('tap') : 'O' })}</span>`, `${t('language')}: ${languages}`],
+        title: [t('title'), t('storyIntro'), ...controls, t('goal'), menu.join(' '), `<span data-open="settings" data-key="">${t('openSettings', { key: touch ? t('tap') : 'O' })}</span>`, `${t('language')}: ${languages}`],
         dead: [t('dead'), t('retry', { key: retry }), summaryLine(game)],
         win: [t('win'), t('winText'), summaryLine(game), t('again', { key: retry })],
     }[game.state]
@@ -83,6 +89,7 @@ export class Hud {
         const urls = canvases => Object.fromEntries(Object.entries(canvases).map(([key, canvas]) => [key, canvas.toDataURL()]))
         this.art = { portraits: Object.fromEntries(Object.entries(buildPortraits()).map(([who, moods]) => [who, urls(moods)])), boards: urls(buildBoards()) }
         this.trails = {}
+        this.faces = {}
         this.applySettings()
         this.items = buildItems()
         // Hotbar icons are cut out of the item sheet
@@ -141,6 +148,7 @@ export class Hud {
         const onOverlayClick = e => {
             const code = e.target.closest('[data-language]')?.dataset.language
             if (code) setLanguage(code)
+            if (e.target.closest('[data-start]')) game.newGame()
             if (e.target.closest('[data-continue]')) game.continueGame()
             if (e.target.closest('[data-open]')) game.panel = 'settings'
         }
@@ -195,6 +203,15 @@ export class Hud {
 
     cost(items) {
         return Object.entries(items).map(([item, n]) => `${n}${this.icon(item)}`).join(' ')
+    }
+
+    // Every foe met so far, with the health it starts with, what hurts it most and how many have fallen
+    bestiaryPanel(renderer) {
+        const rows = Object.keys(TYPES).filter(type => type in bestiary).map(type => {
+            const detail = t('bestiaryEntry', { hp: TYPES[type].hp, weak: t(`weak.${TYPES[type].weak}`), kills: bestiary[type] })
+            return `<div class="row beast"><img src="${this.faces[type] ??= portrait(renderer.enemySheet(type))}"><span>${t(`enemy.${type}`)}<em>${detail}</em></span></div>`
+        })
+        return `<h2>${t('bestiary')}</h2>${rows.join('') || `<p>${t('bestiaryEmpty')}</p>`}<p>${t('bestiaryHint')}</p>`
     }
 
     // Worn gear, the pack with the picked piece compared, arrows to put in the quiver and the rest of the loot
@@ -292,7 +309,9 @@ export class Hud {
         $(`${id}Trail`).style.width = `${100 * trail.value}%`
     }
 
-    update(game, fps, drawCalls, camera) {
+    update(game, renderer, fps) {
+        const camera = renderer.view
+        const drawCalls = renderer.gl.info.render.calls
         const p = game.player
         this.dt = Math.min(0.1, game.time - (this.time ?? game.time))
         this.time = game.time
@@ -304,6 +323,9 @@ export class Hud {
             $('banner').classList.add('on')
         }
         $('stage').dataset.state = game.state
+        // With a run to lose, the title screen takes no stray taps: starting over has to be picked on purpose
+        const stray = game.state === 'title' && game.progress ? '' : 'Enter'
+        if ($('stage').dataset.key !== stray) $('stage').dataset.key = stray
         // A new stage comes in through a fade from black
         if (this.stage !== game.stage) {
             this.stage = game.stage
@@ -371,7 +393,7 @@ export class Hud {
         $('trade').hidden = !near
         if (near) $('trade').textContent = t(near.panel === 'shop' ? 'btnShop' : 'btnQuests')
 
-        const panels = { bag: () => this.bagPanel(p), shop: () => this.shopPanel(p), quests: () => this.questPanel(game), talents: () => this.talentPanel(p), dev: () => devPanel(game), pause: () => this.pausePanel(), settings: () => this.settingsPanel() }
+        const panels = { bag: () => this.bagPanel(p), shop: () => this.shopPanel(p), quests: () => this.questPanel(game), talents: () => this.talentPanel(p), bestiary: () => this.bestiaryPanel(renderer), dev: () => devPanel(game), pause: () => this.pausePanel(), settings: () => this.settingsPanel() }
         const panel = panels[game.panel]?.() ?? ''
         if (panel !== this.panel) {
             this.panel = panel
@@ -396,6 +418,19 @@ export class Hud {
         $('line').textContent = text.slice(0, shown)
         $('next').style.visibility = shown >= text.length ? 'visible' : 'hidden'
     }
+}
+
+// The idle pose of a foe shrunk into a portrait for the bestiary
+function portrait(sheet) {
+    const size = 40
+    const canvas = makeCanvas(size, size)
+    const ctx = canvas.getContext('2d')
+    ctx.imageSmoothingEnabled = false
+    const scale = Math.min(size / sheet.cellW, size / sheet.cellH)
+    const [w, h] = [sheet.cellW * scale, sheet.cellH * scale]
+    const [frame] = sheet.frames.idle
+    ctx.drawImage(sheet.canvas, frame.x, frame.y, sheet.cellW, sheet.cellH, (size - w) / 2, (size - h) / 2, w, h)
+    return canvas.toDataURL()
 }
 
 // The save and the settings go to a file and come back from one, the page reloads with the imported state
